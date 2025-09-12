@@ -7,39 +7,57 @@ on:
 
 permissions:
   contents: write         # create release & upload assets
+  pages: write            # deploy pages
   id-token: write         # needed for provenance
   attestations: write     # needed for provenance
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/configure-pages@v5
 
       - name: Install deps
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: Build single-file HTML
+      - name: Build
         run: |
           bun build-dist
-          # Ensure output is at dist/index.html
           test -f dist/index.html
 
-      - name: Embed version (optional)
+      - name: Embed version
         run: |
-          ver="${GITHUB_REF_NAME}" # e.g. v1.2.0
+          ver="${GITHUB_REF_NAME}"
           printf '\n<!-- version: %s commit: %s -->\n' "$ver" "$GITHUB_SHA" >> dist/index.html
 
       - name: Generate checksum
         run: |
           cd dist
           sha256sum index.html | tee index.sha256
+
+      - name: Upload job artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-dist
+          path: dist
+          if-no-files-found: error
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: site-dist
+          path: dist
 
       - name: Create GitHub Release
         id: create_release
@@ -54,7 +72,17 @@ jobs:
             dist/index.html
             dist/index.sha256
 
-      - name: Attest build provenance (SLSA/GH provenance)
-        uses: actions/attest-build-provenance@v1
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
         with:
           subject-path: "dist/index.html"
+
+  deploy_pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
