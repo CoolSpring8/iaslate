@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write         # create release & upload assets
+  id-token: write         # needed for provenance
+  attestations: write     # needed for provenance
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install deps
+        run: bun install
+
+      - name: Build single-file HTML
+        run: |
+          bun build-dist
+          # Ensure output is at dist/index.html
+          test -f dist/index.html
+
+      - name: Embed version (optional)
+        run: |
+          ver="${GITHUB_REF_NAME}" # e.g. v1.2.0
+          printf '\n<!-- version: %s commit: %s -->\n' "$ver" "$GITHUB_SHA" >> dist/index.html
+
+      - name: Generate checksum
+        run: |
+          cd dist
+          sha256sum index.html | tee index.sha256
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          generate_release_notes: true
+          files: |
+            dist/index.html
+            dist/index.sha256
+
+      - name: Attest build provenance (SLSA/GH provenance)
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: "dist/index.html"
