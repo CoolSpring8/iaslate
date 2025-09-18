@@ -27,15 +27,17 @@ jobs:
           bun build-dist
           test -f dist/index.html
 
-      - name: Embed version
+      - name: Embed version and copy release asset
         run: |
           ver="${GITHUB_REF_NAME}"
           printf '\n<!-- version: %s commit: %s -->\n' "$ver" "$GITHUB_SHA" >> dist/index.html
+          cp dist/index.html dist/iaslate.html
+          test -f dist/iaslate.html
 
       - name: Generate checksum
         run: |
           cd dist
-          sha256sum index.html | tee index.sha256
+          sha256sum iaslate.html | tee iaslate.sha256
 
       - name: Upload job artifact
         uses: actions/upload-artifact@v4
@@ -69,13 +71,13 @@ jobs:
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
           files: |
-            dist/index.html
-            dist/index.sha256
+            dist/iaslate.html
+            dist/iaslate.sha256
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v3
         with:
-          subject-path: "dist/index.html"
+          subject-path: "dist/iaslate.html"
 
   deploy_pages:
     needs: build
