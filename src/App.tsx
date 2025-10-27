@@ -151,6 +151,19 @@ const App = () => {
 				</div>
 				<div className="ml-auto flex gap-4">
 					<UnstyledButton
+						className="i-lucide-eraser w-5 h-5"
+						title="Clear conversation"
+						onClick={() => {
+							messagesList.forEach((message) => {
+								message._abortController?.abort?.();
+							});
+							setIsGenerating(false);
+							setEditingIndex(undefined);
+							setPrompt("");
+							setMessagesList([]);
+						}}
+					/>
+					<UnstyledButton
 						className="i-lucide-file-output w-5 h-5"
 						title="Export to JSON"
 						onClick={() => {
