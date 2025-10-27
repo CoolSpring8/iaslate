@@ -1,31 +1,31 @@
 import {
+	Button,
+	Group,
+	Input,
+	Modal,
+	Popover,
+	Select,
+	Text,
+	Textarea,
+	UnstyledButton,
+} from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import { get, set } from "idb-keyval";
+import { OpenAI } from "openai";
+import {
+	type MutableRefObject,
+	type ReactElement,
 	useEffect,
 	useRef,
 	useState,
-	type MutableRefObject,
-	type ReactElement,
 } from "react";
-import {
-	Button,
-	Input,
-	Select,
-	Textarea,
-	UnstyledButton,
-	Modal,
-	Popover,
-	Text,
-	Group,
-} from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
-import { OpenAI } from "openai";
-import { v4 as uuidv4 } from "uuid";
-import { useImmer } from "use-immer";
-import Markdown from "react-markdown";
 // import remarkGfm from "remark-gfm";
 import { useForm } from "react-hook-form";
+import Markdown from "react-markdown";
 import { Toaster, toast } from "sonner";
-import { get, set } from "idb-keyval";
 import { twJoin } from "tailwind-merge";
+import { useImmer } from "use-immer";
+import { v4 as uuidv4 } from "uuid";
 
 const baseURLKey = "iaslate_baseURL";
 const apiKeyKey = "iaslate_apiKey";
@@ -113,6 +113,27 @@ const App = () => {
 	const [editingIndex, setEditingIndex] = useState<number | undefined>(
 		undefined,
 	);
+
+	useEffect(() => {
+		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+			const hasSessionState =
+				isGenerating ||
+				prompt.trim().length > 0 ||
+				typeof editingIndex !== "undefined" ||
+				messagesList.length > 1;
+			if (!hasSessionState) {
+				return;
+			}
+			event.preventDefault();
+			event.returnValue = "";
+		};
+
+		window.addEventListener("beforeunload", handleBeforeUnload);
+
+		return () => {
+			window.removeEventListener("beforeunload", handleBeforeUnload);
+		};
+	}, [isGenerating, prompt, editingIndex, messagesList.length]);
 
 	return (
 		<div className="flex flex-col h-screen">
