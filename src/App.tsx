@@ -11,6 +11,7 @@ import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import MessageItem from "./components/MessageItem";
 import SettingsModal from "./components/SettingsModal";
+import { useConversationGraph } from "./graph/useConversationGraph";
 import type { Message } from "./types";
 
 const baseURLKey = "iaslate_baseURL";
@@ -82,6 +83,11 @@ const App = () => {
 	);
 	const [view, setView] = useState<"chat" | "diagram">("chat");
 	const isComposing = useRef(false);
+	const syncLinearTail = useConversationGraph((state) => state.syncLinearTail);
+	const detachBetween = useConversationGraph((state) => state.detachBetween);
+	const compilePathTo = useConversationGraph((state) => state.compilePathTo);
+	const removeNodeFromGraph = useConversationGraph((state) => state.removeNode);
+	const resetGraph = useConversationGraph((state) => state.reset);
 
 	useEffect(() => {
 		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -104,6 +110,10 @@ const App = () => {
 		};
 	}, [isGenerating, prompt, editingIndex, messagesList.length]);
 
+	useEffect(() => {
+		syncLinearTail(messagesList);
+	}, [messagesList, syncLinearTail]);
+
 	const handleClearConversation = () => {
 		messagesList.forEach((message) => {
 			message._abortController?.abort?.();
@@ -112,6 +122,7 @@ const App = () => {
 		setEditingIndex(undefined);
 		setPrompt("");
 		setMessagesList([]);
+		resetGraph();
 	};
 
 	const handleExport = () => {
@@ -142,6 +153,7 @@ const App = () => {
 			return;
 		}
 		targetMessage._abortController?.abort?.();
+		removeNodeFromGraph(targetMessage._metadata.uuid);
 		if (typeof editingIndex !== "undefined") {
 			if (editingIndex === index) {
 				setEditingIndex(undefined);
@@ -154,19 +166,6 @@ const App = () => {
 		setMessagesList((draft) => {
 			draft.splice(index, 1);
 		});
-	};
-
-	const handleDetachMessages = (index: number) => {
-		const targetMessage = messagesList[index];
-		targetMessage?._abortController?.abort?.();
-		if (isGenerating) {
-			setIsGenerating(false);
-		}
-		if (typeof editingIndex !== "undefined" && editingIndex >= index) {
-			setEditingIndex(undefined);
-			setPrompt("");
-		}
-		setMessagesList((messages) => messages.slice(0, index));
 	};
 
 	const handleSend = async () => {
@@ -335,7 +334,26 @@ const App = () => {
 								isGenerating={isGenerating}
 								onEdit={() => handleEditMessage(index)}
 								onDelete={() => handleDeleteMessage(index)}
-								onDetach={() => handleDetachMessages(index)}
+								onDetach={() => {
+									if (index === 0) {
+										return;
+									}
+									message._abortController?.abort?.();
+									setIsGenerating(false);
+									if (
+										typeof editingIndex !== "undefined" &&
+										editingIndex >= index
+									) {
+										setEditingIndex(undefined);
+										setPrompt("");
+									}
+									const previous = messagesList[index - 1];
+									const prevId = previous?._metadata.uuid;
+									const currentId = messagesList[index]?._metadata.uuid;
+									if (prevId && currentId) {
+										detachBetween(prevId, currentId);
+									}
+								}}
 							/>
 						))}
 					</div>
@@ -403,14 +421,15 @@ const App = () => {
 			) : (
 				<div className="flex-1 overflow-hidden px-2 py-2">
 					<DiagramView
-						messages={messagesList}
-						onNodeDoubleClick={(index) => {
-							const targetMessage = messagesList[index];
-							if (!targetMessage) {
+						onNodeDoubleClick={(nodeId) => {
+							const compiled = compilePathTo(nodeId);
+							if (compiled.length === 0) {
 								return;
 							}
-							setEditingIndex(index);
-							setPrompt(targetMessage.content);
+							setMessagesList(compiled);
+							setEditingIndex(undefined);
+							setPrompt("");
+							setIsGenerating(false);
 							setView("chat");
 						}}
 					/>

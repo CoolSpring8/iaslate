@@ -9,7 +9,8 @@
     "preview": "rsbuild preview"
   },
   "dependencies": {
-    "@xyflow/react": "^12.9.1"
+    "@xyflow/react": "^12.9.1",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@aaroon/workbox-rspack-plugin": "^0.3.1",
