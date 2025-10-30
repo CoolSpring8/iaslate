@@ -8,15 +8,10 @@ import {
 } from "@xyflow/react";
 import { type CSSProperties, useMemo } from "react";
 import "@xyflow/react/dist/style.css";
-
-export interface DiagramMessage {
-	role: string;
-	content: string;
-	_metadata: { uuid: string };
-}
+import type { Message } from "../types";
 
 interface DiagramViewProps {
-	messages: DiagramMessage[];
+	messages: Message[];
 	onNodeDoubleClick?: (index: number) => void;
 }
 

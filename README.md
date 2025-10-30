@@ -30,10 +30,6 @@ A tiny browser‑based chat UI packaged as a single static HTML file. It is inte
 - React 18, Mantine UI, Tailwind CSS
 - Rsbuild (Rspack)
 
-## Notes
-
-- The entire UI is deliberately written inside a single React component using a small helper to nest JSX and hooks indefinitely. It bends the usual Rules of Hooks as an experiment. A further discussion of the idea can be found here: [comp-in-one](https://github.com/CoolSpring8/comp-in-one).
-
 ## Related Projects
 
 - [lmg-anon/mikupad](https://github.com/lmg-anon/mikupad): LLM Frontend in a single html file
