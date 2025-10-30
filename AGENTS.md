@@ -3,8 +3,7 @@
 ## Project Structure & Module Organization
 
 - Source lives in `src/` (`index.tsx`, `App.tsx`, `index.css`). Build output goes to `dist/`.
-- Providers only in `index.tsx` (e.g., `MantineProvider`). All UI markup, styles, and logic stay in `App.tsx`.
-- Only two constructs in `App.tsx`: `App` and a `Component` helper. Imports, types, and constants may live at the top of the file; almost everything else belongs inside `App`.
+- Providers only in `index.tsx` (e.g., `MantineProvider`). `App.tsx` owns application state, while presentational pieces live in `src/components/`.
 - Key config: `rsbuild.config.mjs`, `tsconfig.json`, `tailwind.config.js`, `postcss.config.js`, `biome.json`.
 
 ## Build, Test, and Development Commands
@@ -19,39 +18,8 @@
 - Language: TypeScript + React 18; Tailwind for styling.
 - Indentation: one tab (Biome default). Keep code concise and self‑documenting.
 - Formatting: use Biome. Run `bunx biome check --write .` to format and organize imports.
-- Components: do not create new React components or files for UI. Use the `Component` helper as an inline pseudo‑component wherever a nested component would normally be used.
+- Components: prefer small presentational components in `src/components/`; keep core state and data flow inside `App.tsx`.
 - CSS: prefer Tailwind utilities; add global styles in `src/index.css` only when necessary.
-
-## UI Centralization & Component Helper
-
-- Everything UI‑related lives in `App`. The `Component` helper enables nesting JSX and hooks indefinitely without adding new components/files.
-- Example (inside `App.tsx`):
-  ```tsx
-  export function App() {
-    const [countA, setCountA] = useState(0);
-    return (
-      <>
-        <h3>Counters</h3>
-        <Component>
-          {() => {
-            const [countB, setCountB] = useState(0);
-            return (
-              <button
-                onClick={() => {
-                  setCountA((c) => c + 1);
-                  setCountB((c) => c + 2);
-                }}
-              >
-                CountA: {countA}, CountB: {countB}
-              </button>
-            );
-          }}
-        </Component>
-      </>
-    );
-  }
-  ```
-  Use `Component` wherever you would otherwise extract a child component.
 
 ## Testing Guidelines
 
