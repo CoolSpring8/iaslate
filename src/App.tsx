@@ -4,6 +4,7 @@ import {
 	Input,
 	Modal,
 	Popover,
+	SegmentedControl,
 	Select,
 	Text,
 	Textarea,
@@ -26,6 +27,7 @@ import { Toaster, toast } from "sonner";
 import { twJoin } from "tailwind-merge";
 import { useImmer } from "use-immer";
 import { v4 as uuidv4 } from "uuid";
+import DiagramView from "./components/DiagramView";
 
 const baseURLKey = "iaslate_baseURL";
 const apiKeyKey = "iaslate_apiKey";
@@ -113,6 +115,7 @@ const App = () => {
 	const [editingIndex, setEditingIndex] = useState<number | undefined>(
 		undefined,
 	);
+	const [view, setView] = useState<"chat" | "diagram">("chat");
 
 	useEffect(() => {
 		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -147,6 +150,18 @@ const App = () => {
 						onChange={setActiveModel}
 						placeholder="Select a model"
 						aria-label="Select a model"
+					/>
+				</div>
+				<div className="ml-4">
+					<SegmentedControl
+						size="sm"
+						value={view}
+						onChange={(value) => setView(value as "chat" | "diagram")}
+						data={[
+							{ label: "Chat", value: "chat" },
+							{ label: "Diagram", value: "diagram" },
+						]}
+						aria-label="View switch"
 					/>
 				</div>
 				<div className="ml-auto flex gap-4">
@@ -186,296 +201,319 @@ const App = () => {
 					/>
 				</div>
 			</div>
-			<div
-				className="flex-1 overflow-y-auto px-4 py-2"
-				onDrop={async (e) => {
-					e.preventDefault();
-					if (e.dataTransfer.items) {
-						for (const item of e.dataTransfer.items) {
-							if (item.kind === "file") {
-								const file = item.getAsFile();
-								if (file) {
-									const content = await file.text();
-									setPrompt((draft) => {
-										draft += content;
-									});
+			{view === "chat" ? (
+				<>
+					<div
+						className="flex-1 overflow-y-auto px-4 py-2"
+						onDrop={async (e) => {
+							e.preventDefault();
+							if (e.dataTransfer.items) {
+								for (const item of e.dataTransfer.items) {
+									if (item.kind === "file") {
+										const file = item.getAsFile();
+										if (file) {
+											const content = await file.text();
+											setPrompt((draft) => {
+												draft += content;
+											});
+										}
+									}
 								}
 							}
-						}
-					}
-				}}
-				onDragOver={(e) => {
-					e.preventDefault();
-				}}
-			>
-				{messagesList.map((message, index) => (
-					<Component key={message._metadata.uuid}>
-						{() => {
-							const [isHovered, setIsHovered] = useState(false);
-							const [hasBeenClicked, setHasBeenClicked] = useState(false);
-							return (
-								<div
-									className={twJoin(
-										"mb-2 hover:bg-slate-50",
-										editingIndex === index && "bg-sky-100 opacity-50",
-									)}
-									onMouseOver={() => setIsHovered(true)}
-									onMouseLeave={() => setIsHovered(false)}
-								>
-									<div className="flex items-center gap-2">
-										<p
-											className="my-0 font-bold"
-											onClick={() => {
-												setHasBeenClicked((v) => !v);
-											}}
+						}}
+						onDragOver={(e) => {
+							e.preventDefault();
+						}}
+					>
+						{messagesList.map((message, index) => (
+							<Component key={message._metadata.uuid}>
+								{() => {
+									const [isHovered, setIsHovered] = useState(false);
+									const [hasBeenClicked, setHasBeenClicked] = useState(false);
+									return (
+										<div
+											className={twJoin(
+												"mb-2 hover:bg-slate-50",
+												editingIndex === index && "bg-sky-100 opacity-50",
+											)}
+											onMouseOver={() => setIsHovered(true)}
+											onMouseLeave={() => setIsHovered(false)}
 										>
-											{message.role}
-										</p>
-										{(hasBeenClicked || isHovered) && (
-											<>
-												<UnstyledButton
-													className="i-lucide-copy text-slate-400 hover:text-slate-600 transition"
+											<div className="flex items-center gap-2">
+												<p
+													className="my-0 font-bold"
 													onClick={() => {
-														try {
-															navigator.clipboard.writeText(message.content);
-															toast("Copied to clipboard", {
-																position: "top-center",
-															});
-														} catch (e) {
-															toast("Failed to copy to clipboard");
-														}
+														setHasBeenClicked((v) => !v);
 													}}
-												/>
-												<UnstyledButton
-													className="i-lucide-edit text-slate-400 hover:text-slate-600 transition"
-													onClick={() => {
-														setEditingIndex(index);
-														setPrompt(message.content);
-													}}
-												/>
-												<Popover width={200} position="bottom" withArrow>
-													<Popover.Target>
-														<UnstyledButton className="i-lucide-trash text-slate-400 hover:text-slate-600 transition" />
-													</Popover.Target>
-													<Popover.Dropdown>
-														<div className="flex flex-col">
-															<Text>Delete?</Text>
-															<Button
-																className="min-w-0 h-auto flex-1 !p-1 text-xs self-end"
-																onClick={() => {
-																	message._abortController?.abort?.();
-																	if (typeof editingIndex !== "undefined") {
-																		setEditingIndex(
-																			editingIndex === index
-																				? undefined
-																				: editingIndex > index
-																					? editingIndex - 1
-																					: editingIndex,
-																		);
-																	}
-																	setIsGenerating(false);
-																	setMessagesList((draft) => {
-																		draft.splice(index, 1);
+												>
+													{message.role}
+												</p>
+												{(hasBeenClicked || isHovered) && (
+													<>
+														<UnstyledButton
+															className="i-lucide-copy text-slate-400 hover:text-slate-600 transition"
+															onClick={() => {
+																try {
+																	navigator.clipboard.writeText(
+																		message.content,
+																	);
+																	toast("Copied to clipboard", {
+																		position: "top-center",
 																	});
-																}}
-															>
-																Yes
-															</Button>
-														</div>
-													</Popover.Dropdown>
-												</Popover>
-												<UnstyledButton
-													className="i-lucide-unlink text-slate-400 hover:text-slate-600 transition"
-													onClick={() => {
-														messagesList[index]._abortController?.abort?.();
-														if (isGenerating) {
-															setIsGenerating(false);
-														}
-														if (
-															typeof editingIndex !== "undefined" &&
-															editingIndex >= index
-														) {
-															setEditingIndex(undefined);
-															setPrompt("");
-														}
-														setMessagesList((m) => m.slice(0, index));
-													}}
-												/>
-											</>
-										)}
+																} catch (e) {
+																	toast("Failed to copy to clipboard");
+																}
+															}}
+														/>
+														<UnstyledButton
+															className="i-lucide-edit text-slate-400 hover:text-slate-600 transition"
+															onClick={() => {
+																setEditingIndex(index);
+																setPrompt(message.content);
+															}}
+														/>
+														<Popover width={200} position="bottom" withArrow>
+															<Popover.Target>
+																<UnstyledButton className="i-lucide-trash text-slate-400 hover:text-slate-600 transition" />
+															</Popover.Target>
+															<Popover.Dropdown>
+																<div className="flex flex-col">
+																	<Text>Delete?</Text>
+																	<Button
+																		className="min-w-0 h-auto flex-1 !p-1 text-xs self-end"
+																		onClick={() => {
+																			message._abortController?.abort?.();
+																			if (typeof editingIndex !== "undefined") {
+																				setEditingIndex(
+																					editingIndex === index
+																						? undefined
+																						: editingIndex > index
+																							? editingIndex - 1
+																							: editingIndex,
+																				);
+																			}
+																			setIsGenerating(false);
+																			setMessagesList((draft) => {
+																				draft.splice(index, 1);
+																			});
+																		}}
+																	>
+																		Yes
+																	</Button>
+																</div>
+															</Popover.Dropdown>
+														</Popover>
+														<UnstyledButton
+															className="i-lucide-unlink text-slate-400 hover:text-slate-600 transition"
+															onClick={() => {
+																messagesList[index]._abortController?.abort?.();
+																if (isGenerating) {
+																	setIsGenerating(false);
+																}
+																if (
+																	typeof editingIndex !== "undefined" &&
+																	editingIndex >= index
+																) {
+																	setEditingIndex(undefined);
+																	setPrompt("");
+																}
+																setMessagesList((m) => m.slice(0, index));
+															}}
+														/>
+													</>
+												)}
+											</div>
+											<div className="twp prose prose-p:whitespace-pre-wrap">
+												<Markdown remarkPlugins={[]}>
+													{`${message.content}${
+														index === messagesList.length - 1 && isGenerating
+															? "▪️"
+															: ""
+													}`}
+												</Markdown>
+											</div>
+										</div>
+									);
+								}}
+							</Component>
+						))}
+					</div>
+					<Component>
+						{() => {
+							const isComposing = useRef(false);
+							const handleSend = async () => {
+								setPrompt("");
+								const assistantMessageUUID = uuidv4();
+								const assistantAbortController = new AbortController();
+								const messagesNew = prompt
+									? [
+											...messagesList,
+											{
+												role: "user",
+												content: prompt,
+												_metadata: {
+													uuid: uuidv4(),
+												},
+											},
+											{
+												role: "assistant",
+												content: "",
+												_metadata: {
+													uuid: assistantMessageUUID,
+												},
+												_abortController: assistantAbortController,
+											},
+										]
+									: [
+											...messagesList,
+											{
+												role: "assistant",
+												content: "",
+												_metadata: {
+													uuid: assistantMessageUUID,
+												},
+												_abortController: assistantAbortController,
+											},
+										];
+								setMessagesList(messagesNew);
+								const stream = await client.current.chat.completions.create(
+									{
+										model: activeModel,
+										messages: messagesNew
+											.map((m) => ({
+												role: m.role,
+												content: m.content,
+											}))
+											.slice(0, -1),
+										// max_tokens: 2048,
+										stream: true,
+										temperature: 0.3,
+										// cache_prompt: true,
+									},
+									{
+										signal: assistantAbortController.signal,
+									},
+								);
+								setIsGenerating(true);
+								for await (const chunk of stream) {
+									setMessagesList((draft) => {
+										const targetMessage = draft.find(
+											(m) => m._metadata.uuid === assistantMessageUUID,
+										);
+										if (
+											chunk.choices[0].delta.content &&
+											!assistantAbortController.signal.aborted &&
+											typeof targetMessage !== "undefined"
+										) {
+											targetMessage.content =
+												targetMessage.content + chunk.choices[0].delta.content;
+										}
+									});
+								}
+								setIsGenerating(false);
+							};
+							const handleFinishEdit = () => {
+								setMessagesList((draft) => {
+									draft[editingIndex as number].content = prompt;
+								});
+								setEditingIndex(undefined);
+								setPrompt("");
+							};
+							const handleSubmit = () => {
+								if (isGenerating) {
+									messagesList[
+										messagesList.length - 1
+									]._abortController?.abort?.();
+									return;
+								}
+								if (typeof editingIndex !== "undefined") {
+									handleFinishEdit();
+								} else {
+									handleSend();
+								}
+							};
+							return (
+								<div className="relative px-4 py-2">
+									<div className="flex items-center">
+										<Textarea
+											className="w-full"
+											minRows={1}
+											maxRows={5}
+											placeholder="Type your message..."
+											value={prompt}
+											onChange={async (e) => {
+												const v = e.target.value;
+												setPrompt(v);
+											}}
+											onCompositionStart={() => {
+												isComposing.current = true;
+											}}
+											onCompositionEnd={() => {
+												isComposing.current = false;
+											}}
+											onKeyDown={async (e) => {
+												if (
+													e.key === "Enter" &&
+													!e.shiftKey &&
+													!e.nativeEvent.isComposing &&
+													!isComposing.current
+												) {
+													e.preventDefault();
+													handleSubmit();
+												}
+											}}
+										/>
+										<UnstyledButton
+											className="ml-2 border rounded-full w-8 h-8 flex items-center justify-center"
+											onClick={handleSubmit}
+										>
+											<div
+												className={twJoin(
+													"w-4 h-4",
+													typeof editingIndex !== "undefined"
+														? "i-lucide-check"
+														: "i-lucide-send-horizontal",
+													isGenerating ? "animate-spin" : "",
+												)}
+											/>
+										</UnstyledButton>
 									</div>
-									<div className="twp prose prose-p:whitespace-pre-wrap">
-										<Markdown remarkPlugins={[]}>
-											{`${message.content}${
-												index === messagesList.length - 1 && isGenerating
-													? "▪️"
-													: ""
-											}`}
-										</Markdown>
-									</div>
+									{typeof editingIndex !== "undefined" && (
+										<div className="absolute left-4 -top-8 h-8 w-[calc(100%-2rem)] rounded bg-orange-300 p-2 flex items-center text-slate-700 text-sm">
+											<div className="i-lucide-edit flex-none" />
+											<p className="ml-1 line-clamp-1">
+												Editing: {messagesList[editingIndex].content}
+											</p>
+											<UnstyledButton
+												className="i-lucide-x ml-auto flex-none"
+												onClick={() => {
+													setEditingIndex(undefined);
+													setPrompt("");
+												}}
+											/>
+										</div>
+									)}
 								</div>
 							);
 						}}
 					</Component>
-				))}
-			</div>
-			<Component>
-				{() => {
-					const isComposing = useRef(false);
-					const handleSend = async () => {
-						setPrompt("");
-						const assistantMessageUUID = uuidv4();
-						const assistantAbortController = new AbortController();
-						const messagesNew = prompt
-							? [
-									...messagesList,
-									{
-										role: "user",
-										content: prompt,
-										_metadata: {
-											uuid: uuidv4(),
-										},
-									},
-									{
-										role: "assistant",
-										content: "",
-										_metadata: {
-											uuid: assistantMessageUUID,
-										},
-										_abortController: assistantAbortController,
-									},
-								]
-							: [
-									...messagesList,
-									{
-										role: "assistant",
-										content: "",
-										_metadata: {
-											uuid: assistantMessageUUID,
-										},
-										_abortController: assistantAbortController,
-									},
-								];
-						setMessagesList(messagesNew);
-						const stream = await client.current.chat.completions.create(
-							{
-								model: activeModel,
-								messages: messagesNew
-									.map((m) => ({
-										role: m.role,
-										content: m.content,
-									}))
-									.slice(0, -1),
-								// max_tokens: 2048,
-								stream: true,
-								temperature: 0.3,
-								// cache_prompt: true,
-							},
-							{
-								signal: assistantAbortController.signal,
-							},
-						);
-						setIsGenerating(true);
-						for await (const chunk of stream) {
-							setMessagesList((draft) => {
-								const targetMessage = draft.find(
-									(m) => m._metadata.uuid === assistantMessageUUID,
-								);
-								if (
-									chunk.choices[0].delta.content &&
-									!assistantAbortController.signal.aborted &&
-									typeof targetMessage !== "undefined"
-								) {
-									targetMessage.content =
-										targetMessage.content + chunk.choices[0].delta.content;
-								}
-							});
-						}
-						setIsGenerating(false);
-					};
-					const handleFinishEdit = () => {
-						setMessagesList((draft) => {
-							draft[editingIndex as number].content = prompt;
-						});
-						setEditingIndex(undefined);
-						setPrompt("");
-					};
-					const handleSubmit = () => {
-						if (isGenerating) {
-							messagesList[messagesList.length - 1]._abortController?.abort?.();
-							return;
-						}
-						if (typeof editingIndex !== "undefined") {
-							handleFinishEdit();
-						} else {
-							handleSend();
-						}
-					};
-					return (
-						<div className="relative px-4 py-2">
-							<div className="flex items-center">
-								<Textarea
-									className="w-full"
-									minRows={1}
-									maxRows={5}
-									placeholder="Type your message..."
-									value={prompt}
-									onChange={async (e) => {
-										const v = e.target.value;
-										setPrompt(v);
-									}}
-									onCompositionStart={() => {
-										isComposing.current = true;
-									}}
-									onCompositionEnd={() => {
-										isComposing.current = false;
-									}}
-									onKeyDown={async (e) => {
-										if (
-											e.key === "Enter" &&
-											!e.shiftKey &&
-											!e.nativeEvent.isComposing &&
-											!isComposing.current
-										) {
-											e.preventDefault();
-											handleSubmit();
-										}
-									}}
-								/>
-								<UnstyledButton
-									className="ml-2 border rounded-full w-8 h-8 flex items-center justify-center"
-									onClick={handleSubmit}
-								>
-									<div
-										className={twJoin(
-											"w-4 h-4",
-											typeof editingIndex !== "undefined"
-												? "i-lucide-check"
-												: "i-lucide-send-horizontal",
-											isGenerating ? "animate-spin" : "",
-										)}
-									/>
-								</UnstyledButton>
-							</div>
-							{typeof editingIndex !== "undefined" && (
-								<div className="absolute left-4 -top-8 h-8 w-[calc(100%-2rem)] rounded bg-orange-300 p-2 flex items-center text-slate-700 text-sm">
-									<div className="i-lucide-edit flex-none" />
-									<p className="ml-1 line-clamp-1">
-										Editing: {messagesList[editingIndex].content}
-									</p>
-									<UnstyledButton
-										className="i-lucide-x ml-auto flex-none"
-										onClick={() => {
-											setEditingIndex(undefined);
-											setPrompt("");
-										}}
-									/>
-								</div>
-							)}
-						</div>
-					);
-				}}
-			</Component>
+				</>
+			) : (
+				<div className="flex-1 overflow-hidden px-2 py-2">
+					<DiagramView
+						messages={messagesList}
+						onNodeDoubleClick={(index) => {
+							const targetMessage = messagesList[index];
+							if (!targetMessage) {
+								return;
+							}
+							setEditingIndex(index);
+							setPrompt(targetMessage.content);
+							setView("chat");
+						}}
+					/>
+				</div>
+			)}
 			<Component>
 				{() => {
 					const { register, handleSubmit } = useForm();
