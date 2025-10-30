@@ -1,5 +1,6 @@
 import {
 	Background,
+	type Connection,
 	Controls,
 	type Edge,
 	MiniMap,
@@ -43,6 +44,12 @@ const DiagramView = ({
 	const activeTargetId = useConversationGraph((state) => state.activeTargetId);
 	const compileActive = useConversationGraph((state) => state.compileActive);
 	const compilePathTo = useConversationGraph((state) => state.compilePathTo);
+	const canConnect = useConversationGraph((state) => state.canConnect);
+	const connectSequence = useConversationGraph(
+		(state) => state.connectSequence,
+	);
+	const detachEdge = useConversationGraph((state) => state.detachBetween);
+	const removeNode = useConversationGraph((state) => state.removeNode);
 
 	const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
 	useEffect(() => {
@@ -240,10 +247,30 @@ const DiagramView = ({
 					nodes={layoutNodes}
 					edges={layoutEdges}
 					fitView
-					nodesConnectable={false}
+					nodesConnectable
 					nodesDraggable={false}
 					onNodeDoubleClick={(_, node) => {
 						onNodeDoubleClick?.(node.id);
+					}}
+					onConnect={(connection: Connection) => {
+						if (!connection.source || !connection.target) {
+							return;
+						}
+						if (canConnect(connection.source, connection.target)) {
+							connectSequence(connection.source, connection.target);
+						}
+					}}
+					onEdgesDelete={(edgesDeleted) => {
+						edgesDeleted.forEach((edge) => {
+							if (edge.source && edge.target) {
+								detachEdge(edge.source, edge.target);
+							}
+						});
+					}}
+					onNodesDelete={(nodesDeleted) => {
+						nodesDeleted.forEach((node) => {
+							removeNode(node.id);
+						});
 					}}
 					onPaneClick={() => {
 						setHoverTargetId(null);

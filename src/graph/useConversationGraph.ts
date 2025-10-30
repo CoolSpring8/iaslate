@@ -14,6 +14,19 @@ interface GraphState extends ConversationGraph {
 	setActiveTarget: (id: NodeID | undefined) => void;
 	findPredecessor: (toId: NodeID) => NodeID | undefined;
 	findTailOfThread: (fromId: NodeID) => NodeID;
+	createSystemMessage: (text: string) => NodeID;
+	activeTail: () => NodeID | undefined;
+	createUserAfter: (parentId: NodeID | undefined, text: string) => NodeID;
+	createAssistantAfter: (parentId: NodeID) => NodeID;
+	appendToNode: (nodeId: NodeID, delta: string) => void;
+	setNodeText: (nodeId: NodeID, text: string) => void;
+	setNodeStatus: (
+		nodeId: NodeID,
+		status: "draft" | "streaming" | "final" | "error",
+	) => void;
+	predecessorOf: (nodeId: NodeID) => NodeID | undefined;
+	canConnect: (source: NodeID, target: NodeID) => boolean;
+	connectSequence: (source: NodeID, target: NodeID) => void;
 	duplicateNodeAfter: (parentId: NodeID) => NodeID | undefined;
 	removeNode: (id: NodeID) => void;
 	reset: () => void;
@@ -180,6 +193,202 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 		}
 		return current;
 	},
+	activeTail: () => {
+		const { compileActive } = get();
+		const path = compileActive();
+		if (path.length === 0) {
+			return undefined;
+		}
+		return path[path.length - 1]._metadata.uuid;
+	},
+	createSystemMessage: (text) => {
+		const newId = uuidv4();
+		set((state) => {
+			const nodes = { ...state.nodes };
+			nodes[newId] = {
+				id: newId,
+				role: "system",
+				text,
+				createdAt: Date.now(),
+			};
+			const edges = { ...state.edges };
+			const blockedEdges = new Set(state.blockedEdges);
+			return {
+				nodes,
+				edges,
+				roots: recomputeRoots(nodes, edges),
+				blockedEdges,
+			};
+		});
+		return newId;
+	},
+	createUserAfter: (parentId, text) => {
+		const newId = uuidv4();
+		set((state) => {
+			const nodes = { ...state.nodes };
+			nodes[newId] = {
+				id: newId,
+				role: "user",
+				text,
+				createdAt: Date.now(),
+			};
+
+			const edges = { ...state.edges };
+			if (parentId) {
+				edges[`${parentId}->${newId}`] = {
+					id: `${parentId}->${newId}`,
+					from: parentId,
+					to: newId,
+					kind: "sequence",
+				};
+			}
+
+			const blockedEdges = new Set(state.blockedEdges);
+			if (parentId) {
+				blockedEdges.delete(`${parentId}->${newId}`);
+			}
+
+			return {
+				nodes,
+				edges,
+				roots: recomputeRoots(nodes, edges),
+				blockedEdges,
+			};
+		});
+		return newId;
+	},
+	createAssistantAfter: (parentId) => {
+		if (!get().nodes[parentId]) {
+			throw new Error(`Parent node ${parentId} not found`);
+		}
+		const newId = uuidv4();
+		set((state) => {
+			const nodes = { ...state.nodes };
+			nodes[newId] = {
+				id: newId,
+				role: "assistant",
+				text: "",
+				createdAt: Date.now(),
+				status: "draft",
+			};
+
+			const edges = { ...state.edges };
+			edges[`${parentId}->${newId}`] = {
+				id: `${parentId}->${newId}`,
+				from: parentId,
+				to: newId,
+				kind: "sequence",
+			};
+
+			const blockedEdges = new Set(state.blockedEdges);
+			blockedEdges.delete(`${parentId}->${newId}`);
+
+			return {
+				nodes,
+				edges,
+				roots: recomputeRoots(nodes, edges),
+				blockedEdges,
+			};
+		});
+		return newId;
+	},
+	appendToNode: (nodeId, delta) =>
+		set((state) => {
+			const node = state.nodes[nodeId];
+			if (!node) {
+				return state;
+			}
+			const nodes = { ...state.nodes };
+			nodes[nodeId] = {
+				...node,
+				text: `${node.text}${delta}`,
+			};
+			return { nodes };
+		}),
+	setNodeText: (nodeId, text) =>
+		set((state) => {
+			const node = state.nodes[nodeId];
+			if (!node) {
+				return state;
+			}
+			const nodes = { ...state.nodes };
+			nodes[nodeId] = {
+				...node,
+				text,
+			};
+			return { nodes };
+		}),
+	setNodeStatus: (nodeId, status) =>
+		set((state) => {
+			const node = state.nodes[nodeId] as GraphNode & { status?: string };
+			if (!node) {
+				return state;
+			}
+			const nodes = { ...state.nodes };
+			nodes[nodeId] = {
+				...node,
+				status,
+			};
+			return { nodes };
+		}),
+	predecessorOf: (nodeId) => {
+		const { edges } = get();
+		for (const edge of Object.values(edges)) {
+			if (edge.to === nodeId) {
+				return edge.from;
+			}
+		}
+		return undefined;
+	},
+	canConnect: (source, target) => {
+		const { nodes, edges } = get();
+		if (!nodes[source] || !nodes[target] || source === target) {
+			return false;
+		}
+		const visited = new Set<NodeID>();
+		const stack: NodeID[] = [target];
+		while (stack.length > 0) {
+			const current = stack.pop() as NodeID;
+			if (current === source) {
+				return false;
+			}
+			if (visited.has(current)) {
+				continue;
+			}
+			visited.add(current);
+			for (const edge of Object.values(edges)) {
+				if (edge.from === current) {
+					stack.push(edge.to);
+				}
+			}
+		}
+		return true;
+	},
+	connectSequence: (source, target) =>
+		set((state) => {
+			if (!state.nodes[source] || !state.nodes[target] || source === target) {
+				return state;
+			}
+			const edges = { ...state.edges };
+			for (const edge of Object.values(edges)) {
+				if (edge.to === target) {
+					delete edges[edge.id];
+				}
+			}
+			edges[`${source}->${target}`] = {
+				id: `${source}->${target}`,
+				from: source,
+				to: target,
+				kind: "sequence",
+			};
+			const blockedEdges = new Set(state.blockedEdges);
+			blockedEdges.delete(`${source}->${target}`);
+			return {
+				edges,
+				roots: recomputeRoots(state.nodes, edges),
+				blockedEdges,
+			};
+		}),
 	duplicateNodeAfter: (parentId) => {
 		const parent = get().nodes[parentId];
 		if (!parent) {
@@ -205,6 +414,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			};
 
 			const blockedEdges = new Set(state.blockedEdges);
+			blockedEdges.delete(edgeId);
 			const roots = recomputeRoots(nodes, edges);
 			return { nodes, edges, roots, blockedEdges };
 		});

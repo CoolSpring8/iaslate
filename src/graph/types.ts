@@ -7,6 +7,7 @@ export interface GraphNode {
 	role: "system" | "user" | "assistant" | "tool";
 	text: string;
 	createdAt: number;
+	status?: "draft" | "streaming" | "final" | "error";
 }
 
 export interface GraphEdge {

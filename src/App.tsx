@@ -2,33 +2,31 @@ import { Textarea, UnstyledButton } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { get, set } from "idb-keyval";
 import { OpenAI } from "openai";
-import { type MutableRefObject, useEffect, useRef, useState } from "react";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import {
+	type MutableRefObject,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { Toaster, toast } from "sonner";
 import { twJoin } from "tailwind-merge";
 import { useImmer } from "use-immer";
-import { v4 as uuidv4 } from "uuid";
+import { useShallow } from "zustand/react/shallow";
 import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import MessageItem from "./components/MessageItem";
 import SettingsModal from "./components/SettingsModal";
 import { useConversationGraph } from "./graph/useConversationGraph";
-import type { Message } from "./types";
 
 const baseURLKey = "iaslate_baseURL";
 const apiKeyKey = "iaslate_apiKey";
 const modelsKey = "iaslate_models";
 
-const App = () => {
-	const [messagesList, setMessagesList] = useImmer<Message[]>([
-		{
-			role: "system",
-			content: "You are a helpful assistant.",
-			_metadata: {
-				uuid: uuidv4(),
-			},
-		},
-	]);
+const defaultSystemPrompt = "You are a helpful assistant.";
 
+const App = () => {
 	const [baseURL, setBaseURL] = useState("");
 	const [apiKey, setAPIKey] = useState("");
 	const [models, setModels] = useImmer<OpenAI.Model[]>([]);
@@ -78,35 +76,58 @@ const App = () => {
 	const [prompt, setPrompt] = useImmer("");
 	const [isSettingsOpen, { open: onSettingsOpen, close: onSettingsClose }] =
 		useDisclosure();
-	const [editingIndex, setEditingIndex] = useState<number | undefined>(
+	const [editingNodeId, setEditingNodeId] = useState<string | undefined>(
 		undefined,
 	);
 	const [view, setView] = useState<"chat" | "diagram">("chat");
 	const isComposing = useRef(false);
-	const syncLinearTail = useConversationGraph((state) => state.syncLinearTail);
-	const detachBetween = useConversationGraph((state) => state.detachBetween);
-	const compilePathTo = useConversationGraph((state) => state.compilePathTo);
-	const compileActive = useConversationGraph((state) => state.compileActive);
+	const [graphNodes, graphEdges, activeTargetId] = useConversationGraph(
+		useShallow((state) => [state.nodes, state.edges, state.activeTargetId]),
+	);
 	const setActiveTarget = useConversationGraph(
 		(state) => state.setActiveTarget,
 	);
-	const findTailOfThread = useConversationGraph(
-		(state) => state.findTailOfThread,
+	const createSystemMessage = useConversationGraph(
+		(state) => state.createSystemMessage,
 	);
-	const activeTargetId = useConversationGraph((state) => state.activeTargetId);
+	const isGraphEmpty = useConversationGraph((state) => state.isEmpty);
+	const createUserAfter = useConversationGraph(
+		(state) => state.createUserAfter,
+	);
+	const createAssistantAfter = useConversationGraph(
+		(state) => state.createAssistantAfter,
+	);
+	const appendToNode = useConversationGraph((state) => state.appendToNode);
+	const setNodeText = useConversationGraph((state) => state.setNodeText);
+	const setNodeStatus = useConversationGraph((state) => state.setNodeStatus);
 	const duplicateNodeAfter = useConversationGraph(
 		(state) => state.duplicateNodeAfter,
 	);
+	const detachBetween = useConversationGraph((state) => state.detachBetween);
+	const findTailOfThread = useConversationGraph(
+		(state) => state.findTailOfThread,
+	);
+	const predecessorOf = useConversationGraph((state) => state.predecessorOf);
+	const compilePathTo = useConversationGraph((state) => state.compilePathTo);
+	const activeTail = useConversationGraph((state) => state.activeTail);
 	const removeNodeFromGraph = useConversationGraph((state) => state.removeNode);
 	const resetGraph = useConversationGraph((state) => state.reset);
+
+	const chatMessages = useMemo(() => {
+		const target = activeTargetId ?? activeTail();
+		if (!target) {
+			return [];
+		}
+		return compilePathTo(target);
+	}, [activeTargetId, graphNodes, graphEdges, compilePathTo, activeTail]);
 
 	useEffect(() => {
 		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
 			const hasSessionState =
 				isGenerating ||
 				prompt.trim().length > 0 ||
-				typeof editingIndex !== "undefined" ||
-				messagesList.length > 1;
+				typeof editingNodeId !== "undefined" ||
+				chatMessages.length > 1;
 			if (!hasSessionState) {
 				return;
 			}
@@ -119,29 +140,34 @@ const App = () => {
 		return () => {
 			window.removeEventListener("beforeunload", handleBeforeUnload);
 		};
-	}, [isGenerating, prompt, editingIndex, messagesList.length]);
+	}, [isGenerating, prompt, editingNodeId, chatMessages.length]);
 
 	useEffect(() => {
-		syncLinearTail(messagesList);
-		if (!activeTargetId && messagesList.length > 0) {
-			setActiveTarget(messagesList[messagesList.length - 1]._metadata.uuid);
+		if (isGraphEmpty() && chatMessages.length === 0) {
+			const systemId = createSystemMessage(defaultSystemPrompt);
+			setActiveTarget(systemId);
 		}
-	}, [messagesList, syncLinearTail, activeTargetId, setActiveTarget]);
+	}, [isGraphEmpty, createSystemMessage, setActiveTarget, chatMessages.length]);
+
+	const streamControllersRef = useRef<Record<string, AbortController>>({});
+	const latestAssistantIdRef = useRef<string | undefined>(undefined);
 
 	const handleClearConversation = () => {
-		messagesList.forEach((message) => {
-			message._abortController?.abort?.();
+		Object.values(streamControllersRef.current).forEach((controller) => {
+			controller.abort();
 		});
+		streamControllersRef.current = {};
+		latestAssistantIdRef.current = undefined;
 		setIsGenerating(false);
-		setEditingIndex(undefined);
+		setEditingNodeId(undefined);
 		setPrompt("");
-		setMessagesList([]);
-		setActiveTarget(undefined);
 		resetGraph();
+		const systemId = createSystemMessage(defaultSystemPrompt);
+		setActiveTarget(systemId);
 	};
 
 	const handleExport = () => {
-		const blob = new Blob([JSON.stringify(messagesList, null, 2)], {
+		const blob = new Blob([JSON.stringify(chatMessages, null, 2)], {
 			type: "application/json",
 		});
 		const url = URL.createObjectURL(blob);
@@ -153,18 +179,12 @@ const App = () => {
 		toast.success("Exported to JSON");
 	};
 
-	const handleActivateThread = (targetId: string) => {
+	const handleActivateThread = (targetId: string | undefined) => {
 		if (!targetId) {
 			return;
 		}
-		const compiled = compilePathTo(targetId);
 		setActiveTarget(targetId);
-		if (compiled.length > 0) {
-			setMessagesList(compiled);
-		} else {
-			setMessagesList([]);
-		}
-		setEditingIndex(undefined);
+		setEditingNodeId(undefined);
 		setPrompt("");
 		setIsGenerating(false);
 		setView("chat");
@@ -178,174 +198,139 @@ const App = () => {
 		handleActivateThread(newId);
 	};
 
-	const handleEditMessage = (index: number) => {
-		const targetMessage = messagesList[index];
-		if (!targetMessage) {
-			return;
-		}
-		setEditingIndex(index);
-		setPrompt(targetMessage.content);
+	const handleEditMessage = (nodeId: string, content: string) => {
+		setEditingNodeId(nodeId);
+		setPrompt(content);
 	};
 
-	const handleDeleteMessage = (index: number) => {
-		const targetMessage = messagesList[index];
-		if (!targetMessage) {
-			return;
+	const handleDeleteMessage = (nodeId: string) => {
+		const controller = streamControllersRef.current[nodeId];
+		if (controller) {
+			controller.abort();
+			delete streamControllersRef.current[nodeId];
+			setIsGenerating(false);
 		}
-		targetMessage._abortController?.abort?.();
-		const deletedId = targetMessage._metadata.uuid;
-		removeNodeFromGraph(deletedId);
-		if (typeof editingIndex !== "undefined") {
-			if (editingIndex === index) {
-				setEditingIndex(undefined);
-				setPrompt("");
-			} else if (editingIndex > index) {
-				setEditingIndex(editingIndex - 1);
-			}
+		if (latestAssistantIdRef.current === nodeId) {
+			latestAssistantIdRef.current = undefined;
 		}
-		setIsGenerating(false);
-		setMessagesList((draft) => {
-			draft.splice(index, 1);
-		});
-		if (activeTargetId === deletedId) {
-			const fallbackId =
-				(index > 0
-					? messagesList[index - 1]?._metadata.uuid
-					: messagesList[index + 1]?._metadata.uuid) ??
-				messagesList[0]?._metadata.uuid;
-			if (fallbackId) {
-				handleActivateThread(fallbackId);
-			} else {
-				setActiveTarget(undefined);
-				const compiledFallback = compileActive();
-				if (compiledFallback.length > 0) {
-					setMessagesList(compiledFallback);
-				} else {
-					setMessagesList([]);
-				}
-			}
-		}
-	};
-
-	const handleDetachMessages = (index: number) => {
-		if (index === 0) {
-			return;
-		}
-		const currentMessage = messagesList[index];
-		const previousMessage = messagesList[index - 1];
-		if (!currentMessage || !previousMessage) {
-			return;
-		}
-		currentMessage._abortController?.abort?.();
-		setIsGenerating(false);
-		if (typeof editingIndex !== "undefined" && editingIndex >= index) {
-			setEditingIndex(undefined);
+		removeNodeFromGraph(nodeId);
+		if (editingNodeId === nodeId) {
+			setEditingNodeId(undefined);
 			setPrompt("");
 		}
-		const prevId = previousMessage._metadata.uuid;
-		const currentId = currentMessage._metadata.uuid;
-		if (!prevId || !currentId) {
+		const tailId = activeTail();
+		if (tailId) {
+			setActiveTarget(tailId);
+		} else if (isGraphEmpty()) {
+			const systemId = createSystemMessage(defaultSystemPrompt);
+			setActiveTarget(systemId);
+		} else {
+			setActiveTarget(undefined);
+		}
+	};
+
+	const handleDetachMessage = (nodeId: string) => {
+		const prevId = predecessorOf(nodeId);
+		if (!prevId) {
 			return;
 		}
-		detachBetween(prevId, currentId);
+		if (editingNodeId === nodeId) {
+			setEditingNodeId(undefined);
+			setPrompt("");
+		}
+		detachBetween(prevId, nodeId);
 		const newTargetId = findTailOfThread(prevId);
 		handleActivateThread(newTargetId);
 	};
 
 	const handleSend = async () => {
-		setPrompt("");
-		const assistantMessageUUID = uuidv4();
-		const assistantAbortController = new AbortController();
-		const messagesNew = prompt
-			? [
-					...messagesList,
-					{
-						role: "user",
-						content: prompt,
-						_metadata: {
-							uuid: uuidv4(),
-						},
-					},
-					{
-						role: "assistant",
-						content: "",
-						_metadata: {
-							uuid: assistantMessageUUID,
-						},
-						_abortController: assistantAbortController,
-					},
-				]
-			: [
-					...messagesList,
-					{
-						role: "assistant",
-						content: "",
-						_metadata: {
-							uuid: assistantMessageUUID,
-						},
-						_abortController: assistantAbortController,
-					},
-				];
-		setMessagesList(messagesNew);
-		setActiveTarget(assistantMessageUUID);
-		const stream = await client.current.chat.completions.create(
-			{
-				model: activeModel,
-				messages: messagesNew
-					.map((message) => ({
-						role: message.role,
-						content: message.content,
-					}))
-					.slice(0, -1),
-				// max_tokens: 2048,
-				stream: true,
-				temperature: 0.3,
-				// cache_prompt: true,
-			},
-			{
-				signal: assistantAbortController.signal,
-			},
-		);
-		setIsGenerating(true);
-		for await (const chunk of stream) {
-			setMessagesList((draft) => {
-				const targetMessage = draft.find(
-					(message) => message._metadata.uuid === assistantMessageUUID,
-				);
-				if (
-					chunk.choices[0].delta.content &&
-					!assistantAbortController.signal.aborted &&
-					typeof targetMessage !== "undefined"
-				) {
-					targetMessage.content =
-						targetMessage.content + chunk.choices[0].delta.content;
-				}
-			});
+		if (!activeModel) {
+			toast.error("Select a model before sending");
+			return;
 		}
-		setIsGenerating(false);
+		const trimmedPrompt = prompt.trim();
+		let resolvedParentId = activeTail() ?? activeTargetId;
+		if (!resolvedParentId) {
+			resolvedParentId = createSystemMessage(defaultSystemPrompt);
+		}
+		if (trimmedPrompt.length > 0) {
+			resolvedParentId = createUserAfter(resolvedParentId, trimmedPrompt);
+			setPrompt("");
+		}
+		const assistantId = createAssistantAfter(resolvedParentId);
+		setNodeStatus(assistantId, "streaming");
+		setActiveTarget(assistantId);
+		latestAssistantIdRef.current = assistantId;
+		const abortController = new AbortController();
+		streamControllersRef.current[assistantId] = abortController;
+		const contextMessages = compilePathTo(resolvedParentId)
+			.filter((message) => message.role !== "tool")
+			.map<ChatCompletionMessageParam>((message) => ({
+				role: message.role as "system" | "user" | "assistant",
+				content: message.content,
+			}));
+		try {
+			const stream = await client.current.chat.completions.create(
+				{
+					model: activeModel,
+					messages: contextMessages,
+					stream: true,
+					temperature: 0.3,
+				},
+				{ signal: abortController.signal },
+			);
+			setIsGenerating(true);
+			for await (const chunk of stream) {
+				const delta = chunk.choices[0]?.delta?.content ?? "";
+				if (!delta) {
+					continue;
+				}
+				appendToNode(assistantId, delta);
+			}
+			setNodeStatus(assistantId, "final");
+		} catch (error) {
+			if (abortController.signal.aborted) {
+				setNodeStatus(assistantId, "error");
+			} else {
+				setNodeStatus(assistantId, "error");
+				throw error;
+			}
+		} finally {
+			setIsGenerating(false);
+			delete streamControllersRef.current[assistantId];
+			if (latestAssistantIdRef.current === assistantId) {
+				latestAssistantIdRef.current = undefined;
+			}
+		}
 	};
 
 	const handleFinishEdit = () => {
-		if (typeof editingIndex === "undefined") {
+		if (!editingNodeId) {
 			return;
 		}
-		setMessagesList((draft) => {
-			draft[editingIndex].content = prompt;
-		});
-		setEditingIndex(undefined);
+		setNodeText(editingNodeId, prompt);
+		setNodeStatus(editingNodeId, "final");
+		setEditingNodeId(undefined);
 		setPrompt("");
 	};
 
 	const handleSubmit = () => {
 		if (isGenerating) {
-			messagesList[messagesList.length - 1]?._abortController?.abort?.();
+			const currentAssistantId = latestAssistantIdRef.current;
+			if (currentAssistantId) {
+				streamControllersRef.current[currentAssistantId]?.abort();
+			}
+			setIsGenerating(false);
 			return;
 		}
-		if (typeof editingIndex !== "undefined") {
+		if (editingNodeId) {
 			handleFinishEdit();
 			return;
 		}
-		void handleSend();
+		void handleSend().catch((error) => {
+			console.error(error);
+			toast.error("Failed to generate response");
+		});
 	};
 
 	const handleSettingsSave = async ({
@@ -375,6 +360,10 @@ const App = () => {
 			setActiveModel(response.data[0].id);
 		}
 	};
+
+	const editingMessage = editingNodeId
+		? chatMessages.find((message) => message._metadata.uuid === editingNodeId)
+		: undefined;
 
 	return (
 		<div className="flex flex-col h-screen">
@@ -410,16 +399,18 @@ const App = () => {
 							event.preventDefault();
 						}}
 					>
-						{messagesList.map((message, index) => (
+						{chatMessages.map((message, index) => (
 							<MessageItem
 								key={message._metadata.uuid}
 								message={message}
-								isEditing={editingIndex === index}
-								isLast={index === messagesList.length - 1}
+								isEditing={editingNodeId === message._metadata.uuid}
+								isLast={index === chatMessages.length - 1}
 								isGenerating={isGenerating}
-								onEdit={() => handleEditMessage(index)}
-								onDelete={() => handleDeleteMessage(index)}
-								onDetach={() => handleDetachMessages(index)}
+								onEdit={() =>
+									handleEditMessage(message._metadata.uuid, message.content)
+								}
+								onDelete={() => handleDeleteMessage(message._metadata.uuid)}
+								onDetach={() => handleDetachMessage(message._metadata.uuid)}
 								onBranch={() => handleActivateThread(message._metadata.uuid)}
 							/>
 						))}
@@ -460,7 +451,7 @@ const App = () => {
 								<div
 									className={twJoin(
 										"w-4 h-4",
-										typeof editingIndex !== "undefined"
+										editingNodeId
 											? "i-lucide-check"
 											: "i-lucide-send-horizontal",
 										isGenerating ? "animate-spin" : "",
@@ -468,16 +459,16 @@ const App = () => {
 								/>
 							</UnstyledButton>
 						</div>
-						{typeof editingIndex !== "undefined" && (
+						{editingMessage && (
 							<div className="absolute left-4 -top-8 h-8 w-[calc(100%-2rem)] rounded bg-orange-300 p-2 flex items-center text-slate-700 text-sm">
 								<div className="i-lucide-edit flex-none" />
 								<p className="ml-1 line-clamp-1">
-									Editing: {messagesList[editingIndex].content}
+									Editing: {editingMessage.content}
 								</p>
 								<UnstyledButton
 									className="i-lucide-x ml-auto flex-none"
 									onClick={() => {
-										setEditingIndex(undefined);
+										setEditingNodeId(undefined);
 										setPrompt("");
 									}}
 								/>
