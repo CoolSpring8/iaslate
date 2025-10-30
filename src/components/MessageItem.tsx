@@ -13,6 +13,7 @@ interface MessageItemProps {
 	onEdit: () => void;
 	onDelete: () => void;
 	onDetach: () => void;
+	onBranch: () => void;
 }
 
 const MessageItem = ({
@@ -23,6 +24,7 @@ const MessageItem = ({
 	onEdit,
 	onDelete,
 	onDetach,
+	onBranch,
 }: MessageItemProps) => {
 	const [isHovered, setIsHovered] = useState(false);
 	const [hasBeenClicked, setHasBeenClicked] = useState(false);
@@ -85,6 +87,11 @@ const MessageItem = ({
 						<UnstyledButton
 							className="i-lucide-unlink text-slate-400 hover:text-slate-600 transition"
 							onClick={onDetach}
+						/>
+						<UnstyledButton
+							className="i-lucide-git-branch-plus text-slate-400 hover:text-slate-600 transition"
+							title="Branch from here"
+							onClick={onBranch}
 						/>
 					</>
 				)}

@@ -86,6 +86,14 @@ const App = () => {
 	const syncLinearTail = useConversationGraph((state) => state.syncLinearTail);
 	const detachBetween = useConversationGraph((state) => state.detachBetween);
 	const compilePathTo = useConversationGraph((state) => state.compilePathTo);
+	const compileActive = useConversationGraph((state) => state.compileActive);
+	const setActiveTarget = useConversationGraph(
+		(state) => state.setActiveTarget,
+	);
+	const findTailOfThread = useConversationGraph(
+		(state) => state.findTailOfThread,
+	);
+	const activeTargetId = useConversationGraph((state) => state.activeTargetId);
 	const removeNodeFromGraph = useConversationGraph((state) => state.removeNode);
 	const resetGraph = useConversationGraph((state) => state.reset);
 
@@ -112,7 +120,10 @@ const App = () => {
 
 	useEffect(() => {
 		syncLinearTail(messagesList);
-	}, [messagesList, syncLinearTail]);
+		if (!activeTargetId && messagesList.length > 0) {
+			setActiveTarget(messagesList[messagesList.length - 1]._metadata.uuid);
+		}
+	}, [messagesList, syncLinearTail, activeTargetId, setActiveTarget]);
 
 	const handleClearConversation = () => {
 		messagesList.forEach((message) => {
@@ -122,6 +133,7 @@ const App = () => {
 		setEditingIndex(undefined);
 		setPrompt("");
 		setMessagesList([]);
+		setActiveTarget(undefined);
 		resetGraph();
 	};
 
@@ -136,6 +148,23 @@ const App = () => {
 		anchor.click();
 		URL.revokeObjectURL(url);
 		toast.success("Exported to JSON");
+	};
+
+	const handleActivateThread = (targetId: string) => {
+		if (!targetId) {
+			return;
+		}
+		const compiled = compilePathTo(targetId);
+		setActiveTarget(targetId);
+		if (compiled.length > 0) {
+			setMessagesList(compiled);
+		} else {
+			setMessagesList([]);
+		}
+		setEditingIndex(undefined);
+		setPrompt("");
+		setIsGenerating(false);
+		setView("chat");
 	};
 
 	const handleEditMessage = (index: number) => {
@@ -153,7 +182,8 @@ const App = () => {
 			return;
 		}
 		targetMessage._abortController?.abort?.();
-		removeNodeFromGraph(targetMessage._metadata.uuid);
+		const deletedId = targetMessage._metadata.uuid;
+		removeNodeFromGraph(deletedId);
 		if (typeof editingIndex !== "undefined") {
 			if (editingIndex === index) {
 				setEditingIndex(undefined);
@@ -166,6 +196,49 @@ const App = () => {
 		setMessagesList((draft) => {
 			draft.splice(index, 1);
 		});
+		if (activeTargetId === deletedId) {
+			const fallbackId =
+				(index > 0
+					? messagesList[index - 1]?._metadata.uuid
+					: messagesList[index + 1]?._metadata.uuid) ??
+				messagesList[0]?._metadata.uuid;
+			if (fallbackId) {
+				handleActivateThread(fallbackId);
+			} else {
+				setActiveTarget(undefined);
+				const compiledFallback = compileActive();
+				if (compiledFallback.length > 0) {
+					setMessagesList(compiledFallback);
+				} else {
+					setMessagesList([]);
+				}
+			}
+		}
+	};
+
+	const handleDetachMessages = (index: number) => {
+		if (index === 0) {
+			return;
+		}
+		const currentMessage = messagesList[index];
+		const previousMessage = messagesList[index - 1];
+		if (!currentMessage || !previousMessage) {
+			return;
+		}
+		currentMessage._abortController?.abort?.();
+		setIsGenerating(false);
+		if (typeof editingIndex !== "undefined" && editingIndex >= index) {
+			setEditingIndex(undefined);
+			setPrompt("");
+		}
+		const prevId = previousMessage._metadata.uuid;
+		const currentId = currentMessage._metadata.uuid;
+		if (!prevId || !currentId) {
+			return;
+		}
+		detachBetween(prevId, currentId);
+		const newTargetId = findTailOfThread(prevId);
+		handleActivateThread(newTargetId);
 	};
 
 	const handleSend = async () => {
@@ -203,6 +276,7 @@ const App = () => {
 					},
 				];
 		setMessagesList(messagesNew);
+		setActiveTarget(assistantMessageUUID);
 		const stream = await client.current.chat.completions.create(
 			{
 				model: activeModel,
@@ -334,26 +408,8 @@ const App = () => {
 								isGenerating={isGenerating}
 								onEdit={() => handleEditMessage(index)}
 								onDelete={() => handleDeleteMessage(index)}
-								onDetach={() => {
-									if (index === 0) {
-										return;
-									}
-									message._abortController?.abort?.();
-									setIsGenerating(false);
-									if (
-										typeof editingIndex !== "undefined" &&
-										editingIndex >= index
-									) {
-										setEditingIndex(undefined);
-										setPrompt("");
-									}
-									const previous = messagesList[index - 1];
-									const prevId = previous?._metadata.uuid;
-									const currentId = messagesList[index]?._metadata.uuid;
-									if (prevId && currentId) {
-										detachBetween(prevId, currentId);
-									}
-								}}
+								onDetach={() => handleDetachMessages(index)}
+								onBranch={() => handleActivateThread(message._metadata.uuid)}
 							/>
 						))}
 					</div>
@@ -422,15 +478,7 @@ const App = () => {
 				<div className="flex-1 overflow-hidden px-2 py-2">
 					<DiagramView
 						onNodeDoubleClick={(nodeId) => {
-							const compiled = compilePathTo(nodeId);
-							if (compiled.length === 0) {
-								return;
-							}
-							setMessagesList(compiled);
-							setEditingIndex(undefined);
-							setPrompt("");
-							setIsGenerating(false);
-							setView("chat");
+							handleActivateThread(nodeId);
 						}}
 					/>
 				</div>

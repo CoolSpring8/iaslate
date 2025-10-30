@@ -3,11 +3,16 @@ import type { Message } from "../types";
 import type { ConversationGraph, GraphEdge, GraphNode, NodeID } from "./types";
 
 interface GraphState extends ConversationGraph {
+	activeTargetId?: NodeID;
 	blockedEdges: Set<string>;
 	isEmpty: () => boolean;
 	syncLinearTail: (messages: Message[]) => void;
 	detachBetween: (from: NodeID, to: NodeID) => void;
 	compilePathTo: (target: NodeID) => Message[];
+	compileActive: () => Message[];
+	setActiveTarget: (id: NodeID | undefined) => void;
+	findPredecessor: (toId: NodeID) => NodeID | undefined;
+	findTailOfThread: (fromId: NodeID) => NodeID;
 	removeNode: (id: NodeID) => void;
 	reset: () => void;
 }
@@ -39,6 +44,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 	nodes: {},
 	edges: {},
 	roots: [],
+	activeTargetId: undefined,
 	blockedEdges: new Set(),
 	isEmpty: () => Object.keys(get().nodes).length === 0,
 	syncLinearTail: (messages) =>
@@ -83,6 +89,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			const roots = recomputeRoots(nodes, edges);
 			return { nodes, edges, roots, blockedEdges: blocked };
 		}),
+	setActiveTarget: (id) => set({ activeTargetId: id }),
 	detachBetween: (from, to) =>
 		set((state) => {
 			const edges = { ...state.edges };
@@ -114,7 +121,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 		while (current && !seen.has(current)) {
 			seen.add(current);
 			path.push(current);
-			const incoming = byTo.get(current) ?? [];
+			const incoming: GraphEdge[] = byTo.get(current) ?? [];
 			if (incoming.length === 0) {
 				break;
 			}
@@ -130,6 +137,46 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 				_metadata: { uuid: node.id },
 			};
 		});
+	},
+	compileActive: () => {
+		const { activeTargetId, compilePathTo, nodes, edges } = get();
+		if (activeTargetId) {
+			return compilePathTo(activeTargetId);
+		}
+		const outDegrees = new Map<NodeID, number>();
+		for (const edge of Object.values(edges)) {
+			outDegrees.set(edge.from, (outDegrees.get(edge.from) ?? 0) + 1);
+		}
+		const tails = Object.keys(nodes).filter(
+			(id) => (outDegrees.get(id) ?? 0) === 0,
+		);
+		const fallbackKeys = Object.keys(nodes);
+		const fallback =
+			tails[0] ?? fallbackKeys[fallbackKeys.length - 1] ?? undefined;
+		return fallback ? compilePathTo(fallback) : [];
+	},
+	findPredecessor: (toId) => {
+		const { edges } = get();
+		for (const edge of Object.values(edges)) {
+			if (edge.to === toId) {
+				return edge.from;
+			}
+		}
+		return undefined;
+	},
+	findTailOfThread: (fromId) => {
+		const { edges } = get();
+		const nextMap = new Map<NodeID, NodeID>();
+		for (const edge of Object.values(edges)) {
+			nextMap.set(edge.from, edge.to);
+		}
+		let current = fromId;
+		const visited = new Set<NodeID>();
+		while (nextMap.has(current) && !visited.has(current)) {
+			visited.add(current);
+			current = nextMap.get(current) as NodeID;
+		}
+		return current;
 	},
 	removeNode: (id) =>
 		set((state) => {
@@ -154,13 +201,22 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			}
 
 			const roots = recomputeRoots(nodes, edges);
-			return { nodes, edges, roots, blockedEdges: blocked };
+			const { activeTargetId } = state;
+			const nextActive = activeTargetId === id ? undefined : activeTargetId;
+			return {
+				nodes,
+				edges,
+				roots,
+				blockedEdges: blocked,
+				activeTargetId: nextActive,
+			};
 		}),
 	reset: () =>
 		set({
 			nodes: {},
 			edges: {},
 			roots: [],
+			activeTargetId: undefined,
 			blockedEdges: new Set(),
 		}),
 }));
