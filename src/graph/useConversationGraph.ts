@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import type { Message } from "../types";
 import type { ConversationGraph, GraphEdge, GraphNode, NodeID } from "./types";
@@ -13,6 +14,7 @@ interface GraphState extends ConversationGraph {
 	setActiveTarget: (id: NodeID | undefined) => void;
 	findPredecessor: (toId: NodeID) => NodeID | undefined;
 	findTailOfThread: (fromId: NodeID) => NodeID;
+	duplicateNodeAfter: (parentId: NodeID) => NodeID | undefined;
 	removeNode: (id: NodeID) => void;
 	reset: () => void;
 }
@@ -177,6 +179,36 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			current = nextMap.get(current) as NodeID;
 		}
 		return current;
+	},
+	duplicateNodeAfter: (parentId) => {
+		const parent = get().nodes[parentId];
+		if (!parent) {
+			return undefined;
+		}
+		const newId = uuidv4();
+		set((state) => {
+			const nodes = { ...state.nodes };
+			nodes[newId] = {
+				id: newId,
+				role: parent.role,
+				text: parent.text,
+				createdAt: Date.now(),
+			};
+
+			const edges = { ...state.edges };
+			const edgeId = `${parentId}->${newId}`;
+			edges[edgeId] = {
+				id: edgeId,
+				from: parentId,
+				to: newId,
+				kind: "sequence",
+			};
+
+			const blockedEdges = new Set(state.blockedEdges);
+			const roots = recomputeRoots(nodes, edges);
+			return { nodes, edges, roots, blockedEdges };
+		});
+		return newId;
 	},
 	removeNode: (id) =>
 		set((state) => {

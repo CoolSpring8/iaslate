@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@xyflow/react": "^12.9.1",
+    "elkjs": "^0.11.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

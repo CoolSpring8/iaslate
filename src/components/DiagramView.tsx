@@ -6,65 +6,260 @@ import {
 	type Node,
 	ReactFlow,
 } from "@xyflow/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "@xyflow/react/dist/style.css";
+import ELK from "elkjs/lib/elk.bundled.js";
+import { twJoin } from "tailwind-merge";
 import { useConversationGraph } from "../graph/useConversationGraph";
 
 interface DiagramViewProps {
 	onNodeDoubleClick?: (nodeId: string) => void;
+	onBranchFromNode?: (nodeId: string) => void;
+	onDuplicateFromNode?: (nodeId: string) => void;
 }
 
-const nodeStyle = {
+const elk = new ELK();
+
+const boxSize = {
+	width: 320,
+	height: 80,
+};
+
+const nodeStyleBase = {
 	border: "1px solid #e2e8f0",
 	borderRadius: 8,
 	padding: 8,
 	background: "#fff",
+	width: boxSize.width,
 };
 
-const DiagramView = ({ onNodeDoubleClick }: DiagramViewProps) => {
+const DiagramView = ({
+	onNodeDoubleClick,
+	onBranchFromNode,
+	onDuplicateFromNode,
+}: DiagramViewProps) => {
 	const graphNodes = useConversationGraph((state) => state.nodes);
 	const graphEdges = useConversationGraph((state) => state.edges);
+	const activeTargetId = useConversationGraph((state) => state.activeTargetId);
+	const compileActive = useConversationGraph((state) => state.compileActive);
+	const compilePathTo = useConversationGraph((state) => state.compilePathTo);
 
-	const { nodes, edges } = useMemo(() => {
-		const sortedNodes = Object.values(graphNodes).sort(
-			(a, b) => a.createdAt - b.createdAt,
-		);
-		const nodes: Node[] = sortedNodes.map((node, index) => {
-			const label = `${node.role}: ${node.text.slice(0, 80)}${
-				node.text.length > 80 ? "…" : ""
-			}`;
-			return {
-				id: node.id,
-				data: { label },
-				position: { x: 80, y: 40 + index * 120 },
-				style: nodeStyle,
-			};
-		});
+	const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
+	useEffect(() => {
+		if (hoverTargetId && !graphNodes[hoverTargetId]) {
+			setHoverTargetId(null);
+		}
+	}, [hoverTargetId, graphNodes]);
 
-		const edges: Edge[] = Object.values(graphEdges).map((edge) => ({
+	const activePathIds = useMemo(() => {
+		const messages = compileActive();
+		const ids = messages.map((message) => message._metadata.uuid);
+		const nodeIds = new Set(ids);
+		const edgeIds = new Set<string>();
+		for (let index = 1; index < ids.length; index += 1) {
+			edgeIds.add(`${ids[index - 1]}->${ids[index]}`);
+		}
+		return { nodes: nodeIds, edges: edgeIds };
+	}, [compileActive, graphNodes, graphEdges, activeTargetId]);
+
+	const previewPathIds = useMemo(() => {
+		if (!hoverTargetId) {
+			return { nodes: new Set<string>(), edges: new Set<string>() };
+		}
+		const messages = compilePathTo(hoverTargetId);
+		const ids = messages.map((message) => message._metadata.uuid);
+		const nodeIds = new Set(ids);
+		const edgeIds = new Set<string>();
+		for (let index = 1; index < ids.length; index += 1) {
+			edgeIds.add(`${ids[index - 1]}->${ids[index]}`);
+		}
+		return { nodes: nodeIds, edges: edgeIds };
+	}, [hoverTargetId, compilePathTo, graphNodes, graphEdges]);
+
+	const [layoutNodes, setLayoutNodes] = useState<Node[]>([]);
+	const [layoutEdges, setLayoutEdges] = useState<Edge[]>([]);
+
+	useEffect(() => {
+		const children = Object.values(graphNodes).map((node) => ({
+			id: node.id,
+			width: boxSize.width,
+			height: boxSize.height,
+		}));
+		const edges = Object.values(graphEdges).map((edge) => ({
 			id: edge.id,
-			source: edge.from,
-			target: edge.to,
-			type: "smoothstep",
+			sources: [edge.from],
+			targets: [edge.to],
 		}));
 
-		return { nodes, edges };
-	}, [graphNodes, graphEdges]);
+		let cancelled = false;
+		void elk
+			.layout({
+				id: "root",
+				layoutOptions: {
+					"elk.algorithm": "layered",
+					"elk.direction": "DOWN",
+					"elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
+					"elk.spacing.nodeNode": "40",
+					"elk.layered.spacing.nodeNodeBetweenLayers": "80",
+					"elk.edgeRouting": "ORTHOGONAL",
+				},
+				children,
+				edges,
+			})
+			.then(
+				(result: {
+					children?: Array<{ id: string; x?: number; y?: number }>;
+					edges?: Array<{ id: string; sources?: string[]; targets?: string[] }>;
+				}) => {
+					if (cancelled) {
+						return;
+					}
+					const nodes: Node[] = (result.children ?? []).map((child) => {
+						const dataNode = graphNodes[child.id];
+						if (!dataNode) {
+							return {
+								id: child.id,
+								position: { x: child.x ?? 0, y: child.y ?? 0 },
+								data: { label: child.id },
+							} satisfies Node;
+						}
+
+						const label = (
+							<div
+								className="flex items-start justify-between gap-2"
+								onMouseEnter={() => {
+									setHoverTargetId(child.id);
+								}}
+								onMouseLeave={() => {
+									setHoverTargetId((previous) =>
+										previous === child.id ? null : previous,
+									);
+								}}
+							>
+								<div className="min-w-0">
+									<p className="text-xs font-mono uppercase text-slate-500">
+										{dataNode.role}
+									</p>
+									<p className="mt-1 text-sm font-medium leading-snug text-slate-800 line-clamp-3">
+										{dataNode.text}
+									</p>
+								</div>
+								<div className="flex flex-none gap-1 opacity-70 hover:opacity-100">
+									<button
+										type="button"
+										className="i-lucide-git-branch-plus w-4 h-4"
+										title="Branch here"
+										onClick={(event) => {
+											event.stopPropagation();
+											onBranchFromNode?.(child.id);
+										}}
+									/>
+									<button
+										type="button"
+										className="i-lucide-copy w-4 h-4"
+										title="Duplicate here"
+										onClick={(event) => {
+											event.stopPropagation();
+											onDuplicateFromNode?.(child.id);
+										}}
+									/>
+								</div>
+							</div>
+						);
+
+						const isPreview = previewPathIds.nodes.has(child.id);
+						const isActive = activePathIds.nodes.has(child.id);
+						const style = {
+							...nodeStyleBase,
+							border: isPreview
+								? "2px dashed #0ea5e9"
+								: isActive
+									? "2px solid #2563eb"
+									: "1px solid #e2e8f0",
+							opacity: isPreview || isActive ? 1 : 0.7,
+						};
+
+						return {
+							id: child.id,
+							position: { x: child.x ?? 0, y: child.y ?? 0 },
+							data: { label },
+							style,
+						} satisfies Node;
+					});
+
+					const edgesStyled: Edge[] = (result.edges ?? []).flatMap((edge) => {
+						const source = edge.sources?.[0];
+						const target = edge.targets?.[0];
+						if (!source || !target) {
+							return [];
+						}
+						const isPreview = previewPathIds.edges.has(edge.id);
+						const isActive = activePathIds.edges.has(edge.id);
+						return [
+							{
+								id: edge.id,
+								source,
+								target,
+								type: "smoothstep",
+								animated: isPreview || isActive,
+								style: {
+									strokeWidth: isPreview || isActive ? 3 : 1.5,
+									stroke: isPreview
+										? "#0ea5e9"
+										: isActive
+											? "#2563eb"
+											: "#94a3b8",
+								},
+							} as Edge,
+						];
+					});
+
+					setLayoutNodes(nodes);
+					setLayoutEdges(edgesStyled);
+				},
+			)
+			.catch(() => {
+				if (!cancelled) {
+					setLayoutNodes([]);
+					setLayoutEdges([]);
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [graphNodes, graphEdges, activeTargetId, activePathIds, previewPathIds]);
+
+	const hasGraphData =
+		layoutNodes.length > 0 || Object.keys(graphNodes).length > 0;
 
 	return (
-		<div style={{ width: "100%", height: "100%" }}>
-			<ReactFlow
-				nodes={nodes}
-				edges={edges}
-				fitView
-				onNodeDoubleClick={(_, node) => {
-					onNodeDoubleClick?.(node.id);
-				}}
-			>
-				<Background />
-				<MiniMap />
-				<Controls />
-			</ReactFlow>
+		<div className="w-full h-full">
+			{hasGraphData ? (
+				<ReactFlow
+					nodes={layoutNodes}
+					edges={layoutEdges}
+					fitView
+					nodesConnectable={false}
+					nodesDraggable={false}
+					onNodeDoubleClick={(_, node) => {
+						onNodeDoubleClick?.(node.id);
+					}}
+					onPaneClick={() => {
+						setHoverTargetId(null);
+					}}
+				>
+					<Background />
+					<MiniMap />
+					<Controls />
+				</ReactFlow>
+			) : (
+				<div className="flex h-full flex-col items-center justify-center text-sm text-slate-500">
+					<p className={twJoin("text-center", "max-w-xs")}>
+						Start a conversation to see the graph here.
+					</p>
+				</div>
+			)}
 		</div>
 	);
 };

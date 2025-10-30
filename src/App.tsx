@@ -94,6 +94,9 @@ const App = () => {
 		(state) => state.findTailOfThread,
 	);
 	const activeTargetId = useConversationGraph((state) => state.activeTargetId);
+	const duplicateNodeAfter = useConversationGraph(
+		(state) => state.duplicateNodeAfter,
+	);
 	const removeNodeFromGraph = useConversationGraph((state) => state.removeNode);
 	const resetGraph = useConversationGraph((state) => state.reset);
 
@@ -165,6 +168,14 @@ const App = () => {
 		setPrompt("");
 		setIsGenerating(false);
 		setView("chat");
+	};
+
+	const handleDuplicateFromNode = (nodeId: string) => {
+		const newId = duplicateNodeAfter(nodeId);
+		if (!newId) {
+			return;
+		}
+		handleActivateThread(newId);
 	};
 
 	const handleEditMessage = (index: number) => {
@@ -477,9 +488,9 @@ const App = () => {
 			) : (
 				<div className="flex-1 overflow-hidden px-2 py-2">
 					<DiagramView
-						onNodeDoubleClick={(nodeId) => {
-							handleActivateThread(nodeId);
-						}}
+						onNodeDoubleClick={handleActivateThread}
+						onBranchFromNode={handleActivateThread}
+						onDuplicateFromNode={handleDuplicateFromNode}
 					/>
 				</div>
 			)}
