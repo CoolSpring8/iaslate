@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
+import { useShallow } from "zustand/react/shallow";
 import { useConversationGraph } from "../graph/useConversationGraph";
 
 interface DiagramViewProps {
@@ -39,17 +40,29 @@ const DiagramView = ({
 	onBranchFromNode,
 	onDuplicateFromNode,
 }: DiagramViewProps) => {
-	const graphNodes = useConversationGraph((state) => state.nodes);
-	const graphEdges = useConversationGraph((state) => state.edges);
-	const activeTargetId = useConversationGraph((state) => state.activeTargetId);
-	const compileActive = useConversationGraph((state) => state.compileActive);
-	const compilePathTo = useConversationGraph((state) => state.compilePathTo);
-	const canConnect = useConversationGraph((state) => state.canConnect);
-	const connectSequence = useConversationGraph(
-		(state) => state.connectSequence,
+	const {
+		nodes: graphNodes,
+		edges: graphEdges,
+		activeTargetId,
+		compileActive,
+		compilePathTo,
+		canConnect,
+		connectSequence,
+		detachBetween: detachEdge,
+		removeNode,
+	} = useConversationGraph(
+		useShallow((state) => ({
+			nodes: state.nodes,
+			edges: state.edges,
+			activeTargetId: state.activeTargetId,
+			compileActive: state.compileActive,
+			compilePathTo: state.compilePathTo,
+			canConnect: state.canConnect,
+			connectSequence: state.connectSequence,
+			detachBetween: state.detachBetween,
+			removeNode: state.removeNode,
+		})),
 	);
-	const detachEdge = useConversationGraph((state) => state.detachBetween);
-	const removeNode = useConversationGraph((state) => state.removeNode);
 
 	const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
 	useEffect(() => {
