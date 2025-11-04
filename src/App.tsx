@@ -81,37 +81,49 @@ const App = () => {
 	);
 	const [view, setView] = useState<"chat" | "diagram">("chat");
 	const isComposing = useRef(false);
-	const [graphNodes, graphEdges, activeTargetId] = useConversationGraph(
-		useShallow((state) => [state.nodes, state.edges, state.activeTargetId]),
+	const {
+		nodes: graphNodes,
+		edges: graphEdges,
+		activeTargetId,
+		setActiveTarget,
+		createSystemMessage,
+		isEmpty: isGraphEmpty,
+		createUserAfter,
+		createAssistantAfter,
+		appendToNode,
+		setNodeText,
+		setNodeStatus,
+		duplicateNodeAfter,
+		detachBetween,
+		findTailOfThread,
+		predecessorOf,
+		compilePathTo,
+		activeTail,
+		removeNode: removeNodeFromGraph,
+		reset: resetGraph,
+	} = useConversationGraph(
+		useShallow((state) => ({
+			nodes: state.nodes,
+			edges: state.edges,
+			activeTargetId: state.activeTargetId,
+			setActiveTarget: state.setActiveTarget,
+			createSystemMessage: state.createSystemMessage,
+			isEmpty: state.isEmpty,
+			createUserAfter: state.createUserAfter,
+			createAssistantAfter: state.createAssistantAfter,
+			appendToNode: state.appendToNode,
+			setNodeText: state.setNodeText,
+			setNodeStatus: state.setNodeStatus,
+			duplicateNodeAfter: state.duplicateNodeAfter,
+			detachBetween: state.detachBetween,
+			findTailOfThread: state.findTailOfThread,
+			predecessorOf: state.predecessorOf,
+			compilePathTo: state.compilePathTo,
+			activeTail: state.activeTail,
+			removeNode: state.removeNode,
+			reset: state.reset,
+		})),
 	);
-	const setActiveTarget = useConversationGraph(
-		(state) => state.setActiveTarget,
-	);
-	const createSystemMessage = useConversationGraph(
-		(state) => state.createSystemMessage,
-	);
-	const isGraphEmpty = useConversationGraph((state) => state.isEmpty);
-	const createUserAfter = useConversationGraph(
-		(state) => state.createUserAfter,
-	);
-	const createAssistantAfter = useConversationGraph(
-		(state) => state.createAssistantAfter,
-	);
-	const appendToNode = useConversationGraph((state) => state.appendToNode);
-	const setNodeText = useConversationGraph((state) => state.setNodeText);
-	const setNodeStatus = useConversationGraph((state) => state.setNodeStatus);
-	const duplicateNodeAfter = useConversationGraph(
-		(state) => state.duplicateNodeAfter,
-	);
-	const detachBetween = useConversationGraph((state) => state.detachBetween);
-	const findTailOfThread = useConversationGraph(
-		(state) => state.findTailOfThread,
-	);
-	const predecessorOf = useConversationGraph((state) => state.predecessorOf);
-	const compilePathTo = useConversationGraph((state) => state.compilePathTo);
-	const activeTail = useConversationGraph((state) => state.activeTail);
-	const removeNodeFromGraph = useConversationGraph((state) => state.removeNode);
-	const resetGraph = useConversationGraph((state) => state.reset);
 
 	const chatMessages = useMemo(() => {
 		const target = activeTargetId ?? activeTail();
