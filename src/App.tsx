@@ -19,8 +19,8 @@ import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import MessageItem from "./components/MessageItem";
 import SettingsModal from "./components/SettingsModal";
-import type { ConversationSnapshot } from "./graph/types";
-import { useConversationGraph } from "./graph/useConversationGraph";
+import type { ConversationSnapshot } from "./tree/types";
+import { useConversationTree } from "./tree/useConversationTree";
 
 const baseURLKey = "iaslate_baseURL";
 const apiKeyKey = "iaslate_apiKey";
@@ -84,32 +84,32 @@ const App = () => {
 	const [view, setView] = useState<"chat" | "diagram">("chat");
 	const isComposing = useRef(false);
 	const {
-		nodes: graphNodes,
-		edges: graphEdges,
+		nodes: treeNodes,
+		edges: treeEdges,
 		activeTargetId,
 		setActiveTarget,
 		createSystemMessage,
-		isEmpty: isGraphEmpty,
+		isEmpty: isTreeEmpty,
 		createUserAfter,
 		createAssistantAfter,
 		appendToNode,
 		setNodeText,
 		setNodeStatus,
-		duplicateNodeAfter,
-		detachBetween,
-	findTailOfThread,
-	predecessorOf,
-	compilePathTo,
-	activeTail,
-	removeNode: removeNodeFromGraph,
-	reset: resetGraph,
-	exportSnapshot,
-	importSnapshot,
-} = useConversationGraph(
-	useShallow((state) => ({
-		nodes: state.nodes,
-		edges: state.edges,
-		activeTargetId: state.activeTargetId,
+		cloneNode,
+		splitBranch,
+		findTailOfThread,
+		predecessorOf,
+		compilePathTo,
+		activeTail,
+		removeNode: removeNodeFromTree,
+		reset: resetTree,
+		exportSnapshot,
+		importSnapshot,
+	} = useConversationTree(
+		useShallow((state) => ({
+			nodes: state.nodes,
+			edges: state.edges,
+			activeTargetId: state.activeTargetId,
 			setActiveTarget: state.setActiveTarget,
 			createSystemMessage: state.createSystemMessage,
 			isEmpty: state.isEmpty,
@@ -118,18 +118,18 @@ const App = () => {
 			appendToNode: state.appendToNode,
 			setNodeText: state.setNodeText,
 			setNodeStatus: state.setNodeStatus,
-			duplicateNodeAfter: state.duplicateNodeAfter,
-			detachBetween: state.detachBetween,
+			cloneNode: state.cloneNode,
+			splitBranch: state.splitBranch,
 			findTailOfThread: state.findTailOfThread,
 			predecessorOf: state.predecessorOf,
 			compilePathTo: state.compilePathTo,
 			activeTail: state.activeTail,
-		removeNode: state.removeNode,
-		reset: state.reset,
-		exportSnapshot: state.exportSnapshot,
-		importSnapshot: state.importSnapshot,
-	})),
-);
+			removeNode: state.removeNode,
+			reset: state.reset,
+			exportSnapshot: state.exportSnapshot,
+			importSnapshot: state.importSnapshot,
+		})),
+	);
 
 	const chatMessages = useMemo(() => {
 		const target = activeTargetId ?? activeTail();
@@ -137,7 +137,7 @@ const App = () => {
 			return [];
 		}
 		return compilePathTo(target);
-	}, [activeTargetId, graphNodes, graphEdges, compilePathTo, activeTail]);
+	}, [activeTargetId, treeNodes, treeEdges, compilePathTo, activeTail]);
 
 	useEffect(() => {
 		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -161,11 +161,11 @@ const App = () => {
 	}, [isGenerating, prompt, editingNodeId, chatMessages.length]);
 
 	useEffect(() => {
-		if (isGraphEmpty() && chatMessages.length === 0) {
+		if (isTreeEmpty() && chatMessages.length === 0) {
 			const systemId = createSystemMessage(defaultSystemPrompt);
 			setActiveTarget(systemId);
 		}
-	}, [isGraphEmpty, createSystemMessage, setActiveTarget, chatMessages.length]);
+	}, [isTreeEmpty, createSystemMessage, setActiveTarget, chatMessages.length]);
 
 	const streamControllersRef = useRef<Record<string, AbortController>>({});
 	const latestAssistantIdRef = useRef<string | undefined>(undefined);
@@ -188,7 +188,7 @@ const App = () => {
 	const handleClearConversation = () => {
 		abortActiveStreams();
 		resetComposerState();
-		resetGraph();
+		resetTree();
 		const systemId = createSystemMessage(defaultSystemPrompt);
 		setActiveTarget(systemId);
 	};
@@ -225,7 +225,9 @@ const App = () => {
 		} catch (error) {
 			console.error(error);
 			const message =
-				error instanceof Error ? error.message : "Failed to import conversation";
+				error instanceof Error
+					? error.message
+					: "Failed to import conversation";
 			toast.error(`Import failed: ${message}`);
 		} finally {
 			event.target.value = "";
@@ -248,7 +250,7 @@ const App = () => {
 	};
 
 	const handleDuplicateFromNode = (nodeId: string) => {
-		const newId = duplicateNodeAfter(nodeId);
+		const newId = cloneNode(nodeId);
 		if (!newId) {
 			return;
 		}
@@ -270,7 +272,7 @@ const App = () => {
 		if (latestAssistantIdRef.current === nodeId) {
 			latestAssistantIdRef.current = undefined;
 		}
-		removeNodeFromGraph(nodeId);
+		removeNodeFromTree(nodeId);
 		if (editingNodeId === nodeId) {
 			setEditingNodeId(undefined);
 			setPrompt("");
@@ -278,7 +280,7 @@ const App = () => {
 		const tailId = activeTail();
 		if (tailId) {
 			setActiveTarget(tailId);
-		} else if (isGraphEmpty()) {
+		} else if (isTreeEmpty()) {
 			const systemId = createSystemMessage(defaultSystemPrompt);
 			setActiveTarget(systemId);
 		} else {
@@ -295,7 +297,7 @@ const App = () => {
 			setEditingNodeId(undefined);
 			setPrompt("");
 		}
-		detachBetween(prevId, nodeId);
+		splitBranch(nodeId);
 		const newTargetId = findTailOfThread(prevId);
 		handleActivateThread(newTargetId);
 	};

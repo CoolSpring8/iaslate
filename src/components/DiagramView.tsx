@@ -12,7 +12,7 @@ import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
 import { useShallow } from "zustand/react/shallow";
-import { useConversationGraph } from "../graph/useConversationGraph";
+import { useConversationTree } from "../tree/useConversationTree";
 
 interface DiagramViewProps {
 	onNodeDoubleClick?: (nodeId: string) => void;
@@ -44,35 +44,35 @@ const DiagramView = ({
 	onDuplicateFromNode,
 }: DiagramViewProps) => {
 	const {
-		nodes: graphNodes,
-		edges: graphEdges,
+		nodes: treeNodes,
+		edges: treeEdges,
 		activeTargetId,
 		compileActive,
 		compilePathTo,
-		canConnect,
-		connectSequence,
-		detachBetween: detachEdge,
+		canReparent,
+		reparentNode,
+		splitBranch,
 		removeNode,
-	} = useConversationGraph(
+	} = useConversationTree(
 		useShallow((state) => ({
 			nodes: state.nodes,
 			edges: state.edges,
 			activeTargetId: state.activeTargetId,
 			compileActive: state.compileActive,
 			compilePathTo: state.compilePathTo,
-			canConnect: state.canConnect,
-			connectSequence: state.connectSequence,
-			detachBetween: state.detachBetween,
+			canReparent: state.canReparent,
+			reparentNode: state.reparentNode,
+			splitBranch: state.splitBranch,
 			removeNode: state.removeNode,
 		})),
 	);
 
 	const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
 	useEffect(() => {
-		if (hoverTargetId && !graphNodes[hoverTargetId]) {
+		if (hoverTargetId && !treeNodes[hoverTargetId]) {
 			setHoverTargetId(null);
 		}
-	}, [hoverTargetId, graphNodes]);
+	}, [hoverTargetId, treeNodes]);
 
 	const activePathIds = useMemo(() => {
 		const messages = compileActive();
@@ -83,7 +83,7 @@ const DiagramView = ({
 			edgeIds.add(`${ids[index - 1]}->${ids[index]}`);
 		}
 		return { nodes: nodeIds, edges: edgeIds };
-	}, [compileActive, graphNodes, graphEdges, activeTargetId]);
+	}, [compileActive, treeNodes, treeEdges, activeTargetId]);
 
 	const previewPathIds = useMemo(() => {
 		if (!hoverTargetId) {
@@ -97,11 +97,11 @@ const DiagramView = ({
 			edgeIds.add(`${ids[index - 1]}->${ids[index]}`);
 		}
 		return { nodes: nodeIds, edges: edgeIds };
-	}, [hoverTargetId, compilePathTo, graphNodes, graphEdges]);
+	}, [hoverTargetId, compilePathTo, treeNodes, treeEdges]);
 
 	const laneAssignments = useMemo(() => {
 		const assignments = new Map<string, number>();
-		const nodes = Object.values(graphNodes);
+		const nodes = Object.values(treeNodes);
 		if (nodes.length === 0) {
 			return assignments;
 		}
@@ -131,7 +131,7 @@ const DiagramView = ({
 			}
 		}
 
-			const pickContinuation = (_parentId: string, children: typeof nodes) => {
+		const pickContinuation = (_parentId: string, children: typeof nodes) => {
 			const preferred = children.find((child) =>
 				activePathIds.nodes.has(child.id),
 			);
@@ -177,7 +177,7 @@ const DiagramView = ({
 			}
 		}
 		return assignments;
-	}, [graphNodes, activePathIds]);
+	}, [treeNodes, activePathIds]);
 
 	const depthByNode = useMemo(() => {
 		const depthMap = new Map<string, number>();
@@ -186,7 +186,7 @@ const DiagramView = ({
 			if (typeof cached === "number") {
 				return cached;
 			}
-			const node = graphNodes[nodeId];
+			const node = treeNodes[nodeId];
 			if (!node || !node.parentId) {
 				depthMap.set(nodeId, 0);
 				return 0;
@@ -195,22 +195,22 @@ const DiagramView = ({
 			depthMap.set(nodeId, depth);
 			return depth;
 		};
-		for (const nodeId of Object.keys(graphNodes)) {
+		for (const nodeId of Object.keys(treeNodes)) {
 			getDepth(nodeId);
 		}
 		return depthMap;
-	}, [graphNodes]);
+	}, [treeNodes]);
 
 	const [layoutNodes, setLayoutNodes] = useState<Node[]>([]);
 	const [layoutEdges, setLayoutEdges] = useState<Edge[]>([]);
 
 	useEffect(() => {
-		const children = Object.values(graphNodes).map((node) => ({
+		const children = Object.values(treeNodes).map((node) => ({
 			id: node.id,
 			width: boxSize.width,
 			height: boxSize.height,
 		}));
-		const edges = Object.values(graphEdges).map((edge) => ({
+		const edges = Object.values(treeEdges).map((edge) => ({
 			id: edge.id,
 			sources: [edge.from],
 			targets: [edge.to],
@@ -240,7 +240,7 @@ const DiagramView = ({
 						return;
 					}
 					const nodes: Node[] = (result.children ?? []).map((child) => {
-						const dataNode = graphNodes[child.id];
+						const dataNode = treeNodes[child.id];
 						if (!dataNode) {
 							return {
 								id: child.id,
@@ -361,8 +361,8 @@ const DiagramView = ({
 			cancelled = true;
 		};
 	}, [
-		graphNodes,
-		graphEdges,
+		treeNodes,
+		treeEdges,
 		activeTargetId,
 		activePathIds,
 		previewPathIds,
@@ -371,7 +371,7 @@ const DiagramView = ({
 	]);
 
 	const hasGraphData =
-		layoutNodes.length > 0 || Object.keys(graphNodes).length > 0;
+		layoutNodes.length > 0 || Object.keys(treeNodes).length > 0;
 
 	return (
 		<div className="w-full h-full">
@@ -389,14 +389,14 @@ const DiagramView = ({
 						if (!connection.source || !connection.target) {
 							return;
 						}
-						if (canConnect(connection.source, connection.target)) {
-							connectSequence(connection.source, connection.target);
+						if (canReparent(connection.source, connection.target)) {
+							reparentNode(connection.target, connection.source);
 						}
 					}}
 					onEdgesDelete={(edgesDeleted) => {
 						edgesDeleted.forEach((edge) => {
-							if (edge.source && edge.target) {
-								detachEdge(edge.source, edge.target);
+							if (edge.target) {
+								splitBranch(edge.target);
 							}
 						});
 					}}
@@ -414,11 +414,11 @@ const DiagramView = ({
 					<Controls />
 				</ReactFlow>
 			) : (
-					<div className="flex h-full flex-col items-center justify-center text-sm text-slate-500">
-						<p className={twJoin("text-center", "max-w-xs")}>
-							Start a conversation to see the thread tree here.
-						</p>
-					</div>
+				<div className="flex h-full flex-col items-center justify-center text-sm text-slate-500">
+					<p className={twJoin("text-center", "max-w-xs")}>
+						Start a conversation to see the thread tree here.
+					</p>
+				</div>
 			)}
 		</div>
 	);

@@ -2,7 +2,7 @@ export type NodeID = string;
 export type EdgeID = string;
 export type EdgeKind = "sequence";
 
-export interface GraphNode {
+export interface TreeNode {
 	id: NodeID;
 	role: "system" | "user" | "assistant" | "tool";
 	text: string;
@@ -11,16 +11,16 @@ export interface GraphNode {
 	parentId: NodeID | null;
 }
 
-export interface GraphEdge {
+export interface TreeEdge {
 	id: EdgeID;
 	from: NodeID;
 	to: NodeID;
 	kind: EdgeKind;
 }
 
-export interface ConversationGraph {
-	nodes: Record<NodeID, GraphNode>;
-	edges: Record<EdgeID, GraphEdge>;
+export interface ConversationTree {
+	nodes: Record<NodeID, TreeNode>;
+	edges: Record<EdgeID, TreeEdge>;
 	roots: NodeID[];
 }
 
@@ -28,7 +28,7 @@ export interface ConversationSnapshotV1 {
 	version: 1;
 	exportedAt: string;
 	tree: {
-		nodes: Record<NodeID, GraphNode>;
+		nodes: Record<NodeID, TreeNode>;
 	};
 	activeTargetId?: NodeID;
 }

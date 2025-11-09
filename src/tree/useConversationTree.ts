@@ -2,18 +2,18 @@ import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import type { Message } from "../types";
 import type {
-	ConversationGraph,
 	ConversationSnapshot,
-	GraphEdge,
-	GraphNode,
+	ConversationTree,
 	NodeID,
+	TreeEdge,
+	TreeNode,
 } from "./types";
 
-interface GraphState extends ConversationGraph {
+interface TreeState extends ConversationTree {
 	activeTargetId?: NodeID;
 	isEmpty: () => boolean;
 	syncLinearTail: (messages: Message[]) => void;
-	detachBetween: (from: NodeID, to: NodeID) => void;
+	splitBranch: (childId: NodeID) => void;
 	compilePathTo: (target: NodeID) => Message[];
 	compileActive: () => Message[];
 	setActiveTarget: (id: NodeID | undefined) => void;
@@ -30,20 +30,20 @@ interface GraphState extends ConversationGraph {
 		status: "draft" | "streaming" | "final" | "error",
 	) => void;
 	predecessorOf: (nodeId: NodeID) => NodeID | undefined;
-	canConnect: (source: NodeID, target: NodeID) => boolean;
-	connectSequence: (source: NodeID, target: NodeID) => void;
-	duplicateNodeAfter: (parentId: NodeID) => NodeID | undefined;
+	canReparent: (parentId: NodeID, childId: NodeID) => boolean;
+	reparentNode: (nodeId: NodeID, nextParentId: NodeID) => void;
+	cloneNode: (sourceId: NodeID) => NodeID | undefined;
 	removeNode: (id: NodeID) => void;
 	reset: () => void;
 	exportSnapshot: () => ConversationSnapshot;
 	importSnapshot: (snapshot: ConversationSnapshot) => void;
 }
 
-type GraphExtras = Partial<Omit<GraphState, keyof ConversationGraph>>;
+type TreeExtras = Partial<Omit<TreeState, keyof ConversationTree>>;
 
-type NodeMap = Record<NodeID, GraphNode>;
+type NodeMap = Record<NodeID, TreeNode>;
 
-const coerceRole = (role: string): GraphNode["role"] => {
+const coerceRole = (role: string): TreeNode["role"] => {
 	if (
 		role === "system" ||
 		role === "user" ||
@@ -56,7 +56,7 @@ const coerceRole = (role: string): GraphNode["role"] => {
 };
 
 const deriveStructure = (nodes: NodeMap) => {
-	const edges: Record<string, GraphEdge> = {};
+	const edges: Record<string, TreeEdge> = {};
 	const roots: NodeID[] = [];
 	for (const node of Object.values(nodes)) {
 		if (node.parentId && nodes[node.parentId]) {
@@ -74,18 +74,18 @@ const deriveStructure = (nodes: NodeMap) => {
 	return { edges, roots };
 };
 
-const withDerivedGraph = (nodes: NodeMap, extras: GraphExtras = {}) => {
+const withDerivedTree = (nodes: NodeMap, extras: TreeExtras = {}) => {
 	const { edges, roots } = deriveStructure(nodes);
 	return {
 		nodes,
 		edges,
 		roots,
 		...extras,
-	} satisfies Partial<GraphState>;
+	} satisfies Partial<TreeState>;
 };
 
 const buildChildrenIndex = (nodes: NodeMap) => {
-	const map = new Map<NodeID, GraphNode[]>();
+	const map = new Map<NodeID, TreeNode[]>();
 	for (const node of Object.values(nodes)) {
 		if (!node.parentId) {
 			continue;
@@ -97,8 +97,8 @@ const buildChildrenIndex = (nodes: NodeMap) => {
 	return map;
 };
 
-const pickNewestNode = (nodes: GraphNode[]) => {
-	return nodes.reduce<GraphNode | undefined>((latest, node) => {
+const pickNewestNode = (nodes: TreeNode[]) => {
+	return nodes.reduce<TreeNode | undefined>((latest, node) => {
 		if (!latest) {
 			return node;
 		}
@@ -135,13 +135,13 @@ const isAncestor = (nodes: NodeMap, ancestorId: NodeID, nodeId: NodeID) => {
 	return false;
 };
 
-const toMessage = (node: GraphNode): Message => ({
+const toMessage = (node: TreeNode): Message => ({
 	role: node.role,
 	content: node.text,
 	_metadata: { uuid: node.id },
 });
 
-export const useConversationGraph = create<GraphState>((set, get) => ({
+export const useConversationTree = create<TreeState>((set, get) => ({
 	nodes: {},
 	edges: {},
 	roots: [],
@@ -165,30 +165,30 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 					createdAt: existing?.createdAt ?? Date.now(),
 					status: existing?.status,
 					parentId,
-				} satisfies GraphNode;
+				} satisfies TreeNode;
 				parentId = id;
 			}
-			return withDerivedGraph(nodes);
+			return withDerivedTree(nodes);
 		}),
 	setActiveTarget: (id) => set({ activeTargetId: id }),
-	detachBetween: (from, to) =>
+	splitBranch: (childId) =>
 		set((state) => {
-			const target = state.nodes[to];
-			if (!target || target.parentId !== from) {
+			const target = state.nodes[childId];
+			if (!target || !target.parentId) {
 				return state;
 			}
 			const nodes: NodeMap = {
 				...state.nodes,
-				[to]: { ...target, parentId: null },
+				[childId]: { ...target, parentId: null },
 			};
-			return withDerivedGraph(nodes);
+			return withDerivedTree(nodes);
 		}),
 	compilePathTo: (target) => {
 		const { nodes } = get();
 		if (!nodes[target]) {
 			return [];
 		}
-		const path: GraphNode[] = [];
+		const path: TreeNode[] = [];
 		const visited = new Set<NodeID>();
 		let cursor: NodeID | null = target;
 		while (cursor !== null) {
@@ -197,7 +197,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 				break;
 			}
 			visited.add(currentId);
-			const node: GraphNode | undefined = nodes[currentId];
+			const node: TreeNode | undefined = nodes[currentId];
 			if (!node) {
 				break;
 			}
@@ -247,7 +247,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 					parentId: null,
 				},
 			};
-			return withDerivedGraph(nodes);
+			return withDerivedTree(nodes);
 		});
 		return newId;
 	},
@@ -272,7 +272,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 					parentId: safeParent,
 				},
 			};
-			return withDerivedGraph(nodes);
+			return withDerivedTree(nodes);
 		});
 		return newId;
 	},
@@ -293,7 +293,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 					parentId,
 				},
 			};
-			return withDerivedGraph(nodes);
+			return withDerivedTree(nodes);
 		});
 		return newId;
 	},
@@ -310,7 +310,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 					text: `${node.text}${delta}`,
 				},
 			};
-			return { nodes } satisfies Partial<GraphState>;
+			return { nodes } satisfies Partial<TreeState>;
 		}),
 	setNodeText: (nodeId, text) =>
 		set((state) => {
@@ -325,7 +325,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 					text,
 				},
 			};
-			return { nodes } satisfies Partial<GraphState>;
+			return { nodes } satisfies Partial<TreeState>;
 		}),
 	setNodeStatus: (nodeId, status) =>
 		set((state) => {
@@ -340,33 +340,39 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 					status,
 				},
 			};
-			return { nodes } satisfies Partial<GraphState>;
+			return { nodes } satisfies Partial<TreeState>;
 		}),
 	predecessorOf: (nodeId) => get().nodes[nodeId]?.parentId ?? undefined,
-	canConnect: (source, target) => {
+	canReparent: (parentId, childId) => {
 		const { nodes } = get();
-		if (!nodes[source] || !nodes[target] || source === target) {
+		if (!nodes[parentId] || !nodes[childId] || parentId === childId) {
 			return false;
 		}
-		return !isAncestor(nodes, target, source);
+		return !isAncestor(nodes, childId, parentId);
 	},
-	connectSequence: (source, target) =>
+	reparentNode: (target, nextParent) =>
 		set((state) => {
-			if (!state.nodes[source] || !state.nodes[target]) {
+			if (!state.nodes[target] || !state.nodes[nextParent]) {
 				return state;
 			}
-			if (source === target || isAncestor(state.nodes, target, source)) {
+			if (
+				nextParent === target ||
+				isAncestor(state.nodes, target, nextParent)
+			) {
 				return state;
 			}
 			const nodes: NodeMap = {
 				...state.nodes,
-				[target]: { ...state.nodes[target], parentId: source },
+				[target]: {
+					...state.nodes[target],
+					parentId: nextParent,
+				},
 			};
-			return withDerivedGraph(nodes);
+			return withDerivedTree(nodes);
 		}),
-	duplicateNodeAfter: (parentId) => {
-		const parent = get().nodes[parentId];
-		if (!parent) {
+	cloneNode: (sourceId) => {
+		const source = get().nodes[sourceId];
+		if (!source) {
 			return undefined;
 		}
 		const newId = uuidv4();
@@ -375,13 +381,13 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 				...state.nodes,
 				[newId]: {
 					id: newId,
-					role: parent.role,
-					text: parent.text,
+					role: source.role,
+					text: source.text,
 					createdAt: Date.now(),
-					parentId,
+					parentId: sourceId,
 				},
 			};
-			return withDerivedGraph(nodes);
+			return withDerivedTree(nodes);
 		});
 		return newId;
 	},
@@ -409,7 +415,7 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 				state.activeTargetId === id
 					? target.parentId ?? undefined
 					: state.activeTargetId;
-			return withDerivedGraph(nodes, {
+			return withDerivedTree(nodes, {
 				activeTargetId: nextActive,
 			});
 		}),
@@ -455,10 +461,10 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 				createdAt,
 				status: node.status,
 				parentId,
-			} satisfies GraphNode;
+			} satisfies TreeNode;
 		}
 		set(
-			withDerivedGraph(nodes, {
+			withDerivedTree(nodes, {
 				activeTargetId:
 					snapshot.activeTargetId && nodes[snapshot.activeTargetId]
 						? snapshot.activeTargetId
@@ -467,3 +473,5 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 		);
 	},
 }));
+
+export const useConversationGraph = useConversationTree;
