@@ -97,24 +97,6 @@ const buildChildrenIndex = (nodes: NodeMap) => {
 	return map;
 };
 
-const collectDescendantIds = (nodes: NodeMap, rootId: NodeID) => {
-	const childrenIndex = buildChildrenIndex(nodes);
-	const ids = new Set<NodeID>();
-	const stack = [rootId];
-	while (stack.length > 0) {
-		const current = stack.pop();
-		if (!current || ids.has(current) || !nodes[current]) {
-			continue;
-		}
-		ids.add(current);
-		const children = childrenIndex.get(current) ?? [];
-		for (const child of children) {
-			stack.push(child.id);
-		}
-	}
-	return ids;
-};
-
 const pickNewestNode = (nodes: GraphNode[]) => {
 	return nodes.reduce<GraphNode | undefined>((latest, node) => {
 		if (!latest) {
@@ -405,22 +387,31 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 	},
 	removeNode: (id) =>
 		set((state) => {
-			if (!state.nodes[id]) {
+			const target = state.nodes[id];
+			if (!target) {
 				return state;
 			}
-			const idsToRemove = collectDescendantIds(state.nodes, id);
-			if (idsToRemove.size === 0) {
-				return state;
-			}
+			const childrenIndex = buildChildrenIndex(state.nodes);
+			const children = childrenIndex.get(id) ?? [];
 			const nodes: NodeMap = { ...state.nodes };
-			for (const nodeId of idsToRemove) {
-				delete nodes[nodeId];
+			delete nodes[id];
+			for (const child of children) {
+				const existing = nodes[child.id];
+				if (!existing) {
+					continue;
+				}
+				nodes[child.id] = {
+					...existing,
+					parentId: target.parentId ?? null,
+				};
 			}
 			const nextActive =
-				state.activeTargetId && !nodes[state.activeTargetId]
-					? undefined
+				state.activeTargetId === id
+					? target.parentId ?? undefined
 					: state.activeTargetId;
-			return withDerivedGraph(nodes, { activeTargetId: nextActive });
+			return withDerivedGraph(nodes, {
+				activeTargetId: nextActive,
+			});
 		}),
 	reset: () =>
 		set({
