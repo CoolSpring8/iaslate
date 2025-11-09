@@ -1,5 +1,11 @@
-import { Button, Group, Input, Modal, UnstyledButton } from "@mantine/core";
-import { useEffect, useState } from "react";
+import {
+	Button,
+	Group,
+	Modal,
+	PasswordInput,
+	TextInput,
+} from "@mantine/core";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 
 interface SettingsFormValues {
@@ -30,8 +36,6 @@ const SettingsModal = ({
 			apiKey,
 		},
 	});
-	const [isVisible, setIsVisible] = useState(false);
-
 	useEffect(() => {
 		if (open) {
 			reset({ baseURL, apiKey });
@@ -45,34 +49,18 @@ const SettingsModal = ({
 					await onSave(values);
 				})}
 			>
-				<Input
-					{...register("baseURL", { required: true })}
-					// In Mantine, use "rightSection" instead of "endContent"
-					rightSection={
-						<div className="i-lucide-server text-lg text-default-400 pointer-events-none flex-shrink-0" />
-					}
+				<TextInput
 					label="OpenAI-Compatible API Base"
 					placeholder="https://.../v1"
 					type="url"
+					{...register("baseURL", { required: true })}
 				/>
-				<Input
-					{...register("apiKey", { required: true })}
-					rightSection={
-						<UnstyledButton
-							className="focus:outline-none"
-							type="button"
-							onClick={() => setIsVisible((value) => !value)}
-						>
-							{isVisible ? (
-								<div className="i-lucide-eye text-lg text-default-400 pointer-events-none" />
-							) : (
-								<div className="i-lucide-eye-off text-lg text-default-400 pointer-events-none" />
-							)}
-						</UnstyledButton>
-					}
+				<PasswordInput
+					mt="md"
 					label="API Key"
 					placeholder="sk-..."
-					type={isVisible ? "text" : "password"}
+					withAsterisk
+					{...register("apiKey", { required: true })}
 				/>
 				<div className="flex items-center justify-between mt-4">
 					<p>Models</p>
