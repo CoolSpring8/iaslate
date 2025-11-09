@@ -97,7 +97,6 @@ const App = () => {
 		setNodeStatus,
 		cloneNode,
 		splitBranch,
-		findTailOfThread,
 		predecessorOf,
 		compilePathTo,
 		activeTail,
@@ -120,7 +119,6 @@ const App = () => {
 			setNodeStatus: state.setNodeStatus,
 			cloneNode: state.cloneNode,
 			splitBranch: state.splitBranch,
-			findTailOfThread: state.findTailOfThread,
 			predecessorOf: state.predecessorOf,
 			compilePathTo: state.compilePathTo,
 			activeTail: state.activeTail,
@@ -298,8 +296,7 @@ const App = () => {
 			setPrompt("");
 		}
 		splitBranch(nodeId);
-		const newTargetId = findTailOfThread(prevId);
-		handleActivateThread(newTargetId);
+		handleActivateThread(prevId);
 	};
 
 	const handleSend = async () => {

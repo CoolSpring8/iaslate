@@ -18,7 +18,6 @@ interface TreeState extends ConversationTree {
 	compileActive: () => Message[];
 	setActiveTarget: (id: NodeID | undefined) => void;
 	findPredecessor: (toId: NodeID) => NodeID | undefined;
-	findTailOfThread: (fromId: NodeID) => NodeID;
 	createSystemMessage: (text: string) => NodeID;
 	activeTail: () => NodeID | undefined;
 	createUserAfter: (parentId: NodeID | undefined, text: string) => NodeID;
@@ -216,24 +215,6 @@ export const useConversationTree = create<TreeState>((set, get) => ({
 		return fallbackId ? compilePathTo(fallbackId) : [];
 	},
 	findPredecessor: (toId) => get().nodes[toId]?.parentId ?? undefined,
-	findTailOfThread: (fromId) => {
-		const { nodes } = get();
-		if (!nodes[fromId]) {
-			return fromId;
-		}
-		const childrenIndex = buildChildrenIndex(nodes);
-		const visited = new Set<NodeID>();
-		let cursor = fromId;
-		while (nodes[cursor] && !visited.has(cursor)) {
-			visited.add(cursor);
-			const newestChild = pickNewestNode(childrenIndex.get(cursor) ?? []);
-			if (!newestChild) {
-				break;
-			}
-			cursor = newestChild.id;
-		}
-		return cursor;
-	},
 	createSystemMessage: (text) => {
 		const newId = uuidv4();
 		set((state) => {
