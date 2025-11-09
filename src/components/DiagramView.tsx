@@ -7,7 +7,7 @@ import {
 	type Node,
 	ReactFlow,
 } from "@xyflow/react";
-import { useEffect, useMemo, useState } from "react";
+import { type PointerEvent, useEffect, useMemo, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
@@ -201,6 +201,12 @@ const DiagramView = ({
 		return depthMap;
 	}, [treeNodes]);
 
+	const handleNodeButtonPointerDown = (
+		event: PointerEvent<HTMLButtonElement>,
+	) => {
+		event.stopPropagation();
+	};
+
 	const [layoutNodes, setLayoutNodes] = useState<Node[]>([]);
 	const [layoutEdges, setLayoutEdges] = useState<Edge[]>([]);
 
@@ -250,17 +256,7 @@ const DiagramView = ({
 						}
 
 						const label = (
-							<div
-								className="flex items-start justify-between gap-2"
-								onMouseEnter={() => {
-									setHoverTargetId(child.id);
-								}}
-								onMouseLeave={() => {
-									setHoverTargetId((previous) =>
-										previous === child.id ? null : previous,
-									);
-								}}
-							>
+							<div className="flex items-start justify-between gap-2">
 								<div className="min-w-0">
 									<p className="text-xs font-mono uppercase text-slate-500">
 										{dataNode.role}
@@ -272,8 +268,9 @@ const DiagramView = ({
 								<div className="flex flex-none gap-1 opacity-70 hover:opacity-100">
 									<button
 										type="button"
-										className="i-lucide-git-branch-plus w-4 h-4"
+										className="i-lucide-git-branch-plus w-4 h-4 nodrag nopan"
 										title="Branch here"
+										onPointerDown={handleNodeButtonPointerDown}
 										onClick={(event) => {
 											event.stopPropagation();
 											onBranchFromNode?.(child.id);
@@ -281,8 +278,9 @@ const DiagramView = ({
 									/>
 									<button
 										type="button"
-										className="i-lucide-copy w-4 h-4"
+										className="i-lucide-copy w-4 h-4 nodrag nopan"
 										title="Duplicate here"
+										onPointerDown={handleNodeButtonPointerDown}
 										onClick={(event) => {
 											event.stopPropagation();
 											onDuplicateFromNode?.(child.id);
@@ -382,8 +380,17 @@ const DiagramView = ({
 					fitView
 					nodesConnectable
 					nodesDraggable={false}
+					zoomOnDoubleClick={false}
 					onNodeDoubleClick={(_, node) => {
 						onNodeDoubleClick?.(node.id);
+					}}
+					onNodeMouseEnter={(_, node) => {
+						setHoverTargetId(node.id);
+					}}
+					onNodeMouseLeave={(_, node) => {
+						setHoverTargetId((previous) =>
+							previous === node.id ? null : previous,
+						);
 					}}
 					onConnect={(connection: Connection) => {
 						if (!connection.source || !connection.target) {
@@ -406,6 +413,9 @@ const DiagramView = ({
 						});
 					}}
 					onPaneClick={() => {
+						setHoverTargetId(null);
+					}}
+					onPaneMouseEnter={() => {
 						setHoverTargetId(null);
 					}}
 				>
