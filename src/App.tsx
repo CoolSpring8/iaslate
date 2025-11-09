@@ -105,6 +105,7 @@ const App = () => {
 		reset: resetGraph,
 		exportSnapshot,
 		importSnapshot,
+		findAmbiguousAncestor,
 	} = useConversationGraph(
 		useShallow((state) => ({
 			nodes: state.nodes,
@@ -128,6 +129,7 @@ const App = () => {
 			reset: state.reset,
 			exportSnapshot: state.exportSnapshot,
 			importSnapshot: state.importSnapshot,
+			findAmbiguousAncestor: state.findAmbiguousAncestor,
 		})),
 	);
 
@@ -309,6 +311,17 @@ const App = () => {
 		let resolvedParentId = activeTail() ?? activeTargetId;
 		if (!resolvedParentId) {
 			resolvedParentId = createSystemMessage(defaultSystemPrompt);
+		}
+		const ambiguousNodeId = findAmbiguousAncestor(resolvedParentId);
+		if (ambiguousNodeId) {
+			const conflictedNode = graphNodes[ambiguousNodeId];
+			const conflictLabel = conflictedNode
+				? `"${conflictedNode.text.slice(0, 60)}"`
+				: ambiguousNodeId;
+			toast.error(
+				`Conversation path is ambiguous near ${conflictLabel}. Detach extra incoming edges before continuing.`,
+			);
+			return;
 		}
 		if (trimmedPrompt.length > 0) {
 			resolvedParentId = createUserAfter(resolvedParentId, trimmedPrompt);

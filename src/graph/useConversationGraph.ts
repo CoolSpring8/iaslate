@@ -38,6 +38,7 @@ interface GraphState extends ConversationGraph {
 	reset: () => void;
 	exportSnapshot: () => ConversationSnapshot;
 	importSnapshot: (snapshot: ConversationSnapshot) => void;
+	findAmbiguousAncestor: (target: NodeID) => NodeID | undefined;
 }
 
 const coerceRole = (role: string): GraphNode["role"] => {
@@ -188,6 +189,32 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 				_metadata: { uuid: node.id },
 			};
 		});
+	},
+	findAmbiguousAncestor: (target) => {
+		const { nodes, edges } = get();
+		if (!nodes[target]) {
+			return undefined;
+		}
+		const byTo = new Map<NodeID, GraphEdge[]>();
+		for (const edge of Object.values(edges)) {
+			const existing = byTo.get(edge.to) ?? [];
+			existing.push(edge);
+			byTo.set(edge.to, existing);
+		}
+		const seen = new Set<NodeID>();
+		let current: NodeID | undefined = target;
+		while (current && !seen.has(current)) {
+			seen.add(current);
+			const incoming: GraphEdge[] = byTo.get(current) ?? [];
+			if (incoming.length > 1) {
+				return current;
+			}
+			if (incoming.length === 0) {
+				break;
+			}
+			current = incoming[0].from;
+		}
+		return undefined;
 	},
 	compileActive: () => {
 		const { activeTargetId, compilePathTo, nodes, edges } = get();
@@ -562,35 +589,35 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			activeTargetId: state.activeTargetId,
 		};
 	},
-	importSnapshot: (snapshot) => {
-		if (snapshot.version !== 1) {
-			throw new Error(`Unsupported snapshot version: ${snapshot.version}`);
-		}
-		const nodesRaw = snapshot.graph?.nodes ?? {};
-		const edgesRaw = snapshot.graph?.edges ?? {};
-		const nodes = Object.fromEntries(
-			Object.entries(nodesRaw).map(([id, node]) => [id, { ...node }]),
-		);
-		const edgesFiltered = Object.entries(edgesRaw).filter(([, edge]) => {
-			return Boolean(nodes[edge.from] && nodes[edge.to]);
-		});
-		const edges = Object.fromEntries(
-			edgesFiltered.map(([id, edge]) => [id, { ...edge }]),
-		);
-		const rootsRaw = snapshot.graph?.roots ?? [];
-		const rootsProvided = rootsRaw.filter((rootId) => nodes[rootId]);
-		const roots =
-			rootsProvided.length > 0 ? rootsProvided : recomputeRoots(nodes, edges);
-		const activeTargetId =
-			snapshot.activeTargetId && nodes[snapshot.activeTargetId]
-				? snapshot.activeTargetId
-				: undefined;
-		set({
-			nodes,
-			edges,
-			roots,
-			activeTargetId,
-			blockedEdges: new Set(snapshot.blockedEdges ?? []),
-		});
-	},
+		importSnapshot: (snapshot) => {
+			if (snapshot.version !== 1) {
+				throw new Error(`Unsupported snapshot version: ${snapshot.version}`);
+			}
+			const nodesRaw = snapshot.graph?.nodes ?? {};
+			const edgesRaw = snapshot.graph?.edges ?? {};
+			const nodes = Object.fromEntries(
+				Object.entries(nodesRaw).map(([id, node]) => [id, { ...node }]),
+			);
+			const edgesFiltered = Object.entries(edgesRaw).filter(([, edge]) => {
+				return Boolean(nodes[edge.from] && nodes[edge.to]);
+			});
+			const edges = Object.fromEntries(
+				edgesFiltered.map(([id, edge]) => [id, { ...edge }]),
+			);
+			const rootsRaw = snapshot.graph?.roots ?? [];
+			const rootsProvided = rootsRaw.filter((rootId) => nodes[rootId]);
+			const roots =
+				rootsProvided.length > 0 ? rootsProvided : recomputeRoots(nodes, edges);
+			const activeTargetId =
+				snapshot.activeTargetId && nodes[snapshot.activeTargetId]
+					? snapshot.activeTargetId
+					: undefined;
+			set({
+				nodes,
+				edges,
+				roots,
+				activeTargetId,
+				blockedEdges: new Set(snapshot.blockedEdges ?? []),
+			});
+		},
 }));

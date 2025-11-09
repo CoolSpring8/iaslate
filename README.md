@@ -20,6 +20,7 @@ A tiny browser‑based chat UI packaged as a single static HTML file. It is inte
 - Hover over a message to reveal actions: copy, edit, delete, unlink (remove this message and all messages after).
 - Drop plaintext files into the message area to append their contents to the input.
 - Import or export the full conversation graph via the header buttons; exported JSON captures every node/edge, not just the active chat path.
+- Generation requires each message to have a single parent; if you reconnect nodes so a message has multiple incoming edges, sending will stop with an error until you detach the extras.
 
 ## Security Notes
 
