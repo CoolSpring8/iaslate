@@ -8,6 +8,7 @@ export interface GraphNode {
 	text: string;
 	createdAt: number;
 	status?: "draft" | "streaming" | "final" | "error";
+	parentId: NodeID | null;
 }
 
 export interface GraphEdge {
@@ -26,8 +27,9 @@ export interface ConversationGraph {
 export interface ConversationSnapshotV1 {
 	version: 1;
 	exportedAt: string;
-	graph: ConversationGraph;
-	blockedEdges: EdgeID[];
+	tree: {
+		nodes: Record<NodeID, GraphNode>;
+	};
 	activeTargetId?: NodeID;
 }
 

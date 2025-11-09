@@ -11,7 +11,6 @@ import type {
 
 interface GraphState extends ConversationGraph {
 	activeTargetId?: NodeID;
-	blockedEdges: Set<string>;
 	isEmpty: () => boolean;
 	syncLinearTail: (messages: Message[]) => void;
 	detachBetween: (from: NodeID, to: NodeID) => void;
@@ -41,6 +40,10 @@ interface GraphState extends ConversationGraph {
 	findAmbiguousAncestor: (target: NodeID) => NodeID | undefined;
 }
 
+type GraphExtras = Partial<Omit<GraphState, keyof ConversationGraph>>;
+
+type NodeMap = Record<NodeID, GraphNode>;
+
 const coerceRole = (role: string): GraphNode["role"] => {
 	if (
 		role === "system" ||
@@ -53,270 +56,263 @@ const coerceRole = (role: string): GraphNode["role"] => {
 	return "assistant";
 };
 
-const recomputeRoots = (
-	nodes: Record<NodeID, GraphNode>,
-	edges: Record<string, GraphEdge>,
-) => {
-	const incoming = new Map<NodeID, number>();
-	for (const edge of Object.values(edges)) {
-		incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
+const deriveStructure = (nodes: NodeMap) => {
+	const edges: Record<string, GraphEdge> = {};
+	const roots: NodeID[] = [];
+	for (const node of Object.values(nodes)) {
+		if (node.parentId && nodes[node.parentId]) {
+			const edgeId = `${node.parentId}->${node.id}`;
+			edges[edgeId] = {
+				id: edgeId,
+				from: node.parentId,
+				to: node.id,
+				kind: "sequence",
+			};
+		} else {
+			roots.push(node.id);
+		}
 	}
-	return Object.keys(nodes).filter((id) => (incoming.get(id) ?? 0) === 0);
+	return { edges, roots };
 };
 
-const wouldCreateCycle = (
-	edges: Record<string, GraphEdge>,
-	source: NodeID,
-	target: NodeID,
-) => {
-	if (source === target) {
-		return true;
-	}
-	const visited = new Set<NodeID>();
-	const stack: NodeID[] = [target];
-	while (stack.length > 0) {
-		const current = stack.pop() as NodeID;
-		if (current === source) {
-			return true;
-		}
-		if (visited.has(current)) {
+const withDerivedGraph = (nodes: NodeMap, extras: GraphExtras = {}) => {
+	const { edges, roots } = deriveStructure(nodes);
+	return {
+		nodes,
+		edges,
+		roots,
+		...extras,
+	} satisfies Partial<GraphState>;
+};
+
+const buildChildrenIndex = (nodes: NodeMap) => {
+	const map = new Map<NodeID, GraphNode[]>();
+	for (const node of Object.values(nodes)) {
+		if (!node.parentId) {
 			continue;
 		}
-		visited.add(current);
-		for (const edge of Object.values(edges)) {
-			if (edge.from === current) {
-				stack.push(edge.to);
-			}
+		const list = map.get(node.parentId) ?? [];
+		list.push(node);
+		map.set(node.parentId, list);
+	}
+	return map;
+};
+
+const collectDescendantIds = (nodes: NodeMap, rootId: NodeID) => {
+	const childrenIndex = buildChildrenIndex(nodes);
+	const ids = new Set<NodeID>();
+	const stack = [rootId];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current || ids.has(current) || !nodes[current]) {
+			continue;
 		}
+		ids.add(current);
+		const children = childrenIndex.get(current) ?? [];
+		for (const child of children) {
+			stack.push(child.id);
+		}
+	}
+	return ids;
+};
+
+const pickNewestNode = (nodes: GraphNode[]) => {
+	return nodes.reduce<GraphNode | undefined>((latest, node) => {
+		if (!latest) {
+			return node;
+		}
+		return node.createdAt > latest.createdAt ? node : latest;
+	}, undefined);
+};
+
+const pickNewestLeafId = (nodes: NodeMap) => {
+	const entries = Object.values(nodes);
+	if (entries.length === 0) {
+		return undefined;
+	}
+	const childrenIndex = buildChildrenIndex(nodes);
+	const leaves = entries.filter(
+		(node) => (childrenIndex.get(node.id) ?? []).length === 0,
+	);
+	const pool = leaves.length > 0 ? leaves : entries;
+	return pickNewestNode(pool)?.id;
+};
+
+const isAncestor = (nodes: NodeMap, ancestorId: NodeID, nodeId: NodeID) => {
+	let cursor: NodeID | null | undefined = nodeId;
+	const visited = new Set<NodeID>();
+	while (cursor) {
+		if (cursor === ancestorId) {
+			return true;
+		}
+		if (visited.has(cursor)) {
+			break;
+		}
+		visited.add(cursor);
+		cursor = nodes[cursor]?.parentId ?? null;
 	}
 	return false;
 };
+
+const toMessage = (node: GraphNode): Message => ({
+	role: node.role,
+	content: node.text,
+	_metadata: { uuid: node.id },
+});
 
 export const useConversationGraph = create<GraphState>((set, get) => ({
 	nodes: {},
 	edges: {},
 	roots: [],
 	activeTargetId: undefined,
-	blockedEdges: new Set(),
 	isEmpty: () => Object.keys(get().nodes).length === 0,
 	syncLinearTail: (messages) =>
 		set((state) => {
-			const nodes = { ...state.nodes };
-			const edges = { ...state.edges };
-			const blocked = new Set(state.blockedEdges);
-
-			let previousId: string | null = null;
+			if (messages.length === 0) {
+				return state;
+			}
+			const nodes = { ...state.nodes } satisfies NodeMap;
+			let parentId: NodeID | null = null;
 			for (const message of messages) {
 				const id = message._metadata.uuid;
-				const nextRole = coerceRole(message.role);
+				const role = coerceRole(message.role);
 				const existing = nodes[id];
-				if (!existing) {
-					nodes[id] = {
-						id,
-						role: nextRole,
-						text: message.content,
-						createdAt: Date.now(),
-					};
-				} else if (
-					existing.text !== message.content ||
-					existing.role !== nextRole
-				) {
-					nodes[id] = { ...existing, text: message.content, role: nextRole };
-				}
-
-				if (previousId) {
-					const edgeId = `${previousId}->${id}`;
-					if (!edges[edgeId] && !blocked.has(edgeId)) {
-						edges[edgeId] = {
-							id: edgeId,
-							from: previousId,
-							to: id,
-							kind: "sequence",
-						};
-					}
-				}
-				previousId = id;
+				nodes[id] = {
+					id,
+					role,
+					text: message.content,
+					createdAt: existing?.createdAt ?? Date.now(),
+					status: existing?.status,
+					parentId,
+				} satisfies GraphNode;
+				parentId = id;
 			}
-
-			const roots = recomputeRoots(nodes, edges);
-			return { nodes, edges, roots, blockedEdges: blocked };
+			return withDerivedGraph(nodes);
 		}),
 	setActiveTarget: (id) => set({ activeTargetId: id }),
 	detachBetween: (from, to) =>
 		set((state) => {
-			const edges = { ...state.edges };
-			const key = `${from}->${to}`;
-			if (edges[key]) {
-				delete edges[key];
+			const target = state.nodes[to];
+			if (!target || target.parentId !== from) {
+				return state;
 			}
-			const blocked = new Set(state.blockedEdges);
-			blocked.add(key);
-			const roots = recomputeRoots(state.nodes, edges);
-			return { edges, roots, blockedEdges: blocked };
+			const nodes: NodeMap = {
+				...state.nodes,
+				[to]: { ...target, parentId: null },
+			};
+			return withDerivedGraph(nodes);
 		}),
 	compilePathTo: (target) => {
-		const { nodes, edges } = get();
+		const { nodes } = get();
 		if (!nodes[target]) {
 			return [];
 		}
-
-		const byTo = new Map<NodeID, GraphEdge[]>();
-		for (const edge of Object.values(edges)) {
-			const existing = byTo.get(edge.to) ?? [];
-			existing.push(edge);
-			byTo.set(edge.to, existing);
-		}
-
-		const path: NodeID[] = [];
-		const seen = new Set<NodeID>();
-		let current: NodeID | undefined = target;
-		while (current && !seen.has(current)) {
-			seen.add(current);
-			path.push(current);
-			const incoming: GraphEdge[] = byTo.get(current) ?? [];
-			if (incoming.length === 0) {
+		const path: GraphNode[] = [];
+		const visited = new Set<NodeID>();
+		let cursor: NodeID | null = target;
+		while (cursor !== null) {
+			const currentId = cursor as NodeID;
+			if (visited.has(currentId)) {
 				break;
 			}
-			current = incoming[0].from;
+			visited.add(currentId);
+			const node: GraphNode | undefined = nodes[currentId];
+			if (!node) {
+				break;
+			}
+			path.push(node);
+			cursor = node.parentId;
 		}
 		path.reverse();
-
-		return path.map((id) => {
-			const node = nodes[id];
-			return {
-				role: node.role,
-				content: node.text,
-				_metadata: { uuid: node.id },
-			};
-		});
+		return path.map(toMessage);
 	},
 	findAmbiguousAncestor: (target) => {
-		const { nodes, edges } = get();
+		const { nodes } = get();
 		if (!nodes[target]) {
 			return undefined;
 		}
-		const byTo = new Map<NodeID, GraphEdge[]>();
-		for (const edge of Object.values(edges)) {
-			const existing = byTo.get(edge.to) ?? [];
-			existing.push(edge);
-			byTo.set(edge.to, existing);
-		}
 		const seen = new Set<NodeID>();
-		let current: NodeID | undefined = target;
-		while (current && !seen.has(current)) {
-			seen.add(current);
-			const incoming: GraphEdge[] = byTo.get(current) ?? [];
-			if (incoming.length > 1) {
-				return current;
+		let cursor: NodeID | null = target;
+		while (cursor !== null) {
+			const currentId = cursor as NodeID;
+			if (seen.has(currentId)) {
+				return currentId;
 			}
-			if (incoming.length === 0) {
+			seen.add(currentId);
+			const parentId: NodeID | null = nodes[currentId]?.parentId ?? null;
+			if (!parentId) {
 				break;
 			}
-			current = incoming[0].from;
+			cursor = parentId;
 		}
 		return undefined;
 	},
 	compileActive: () => {
-		const { activeTargetId, compilePathTo, nodes, edges } = get();
+		const { activeTargetId, compilePathTo, nodes } = get();
 		if (activeTargetId) {
 			return compilePathTo(activeTargetId);
 		}
-		const outDegrees = new Map<NodeID, number>();
-		for (const edge of Object.values(edges)) {
-			outDegrees.set(edge.from, (outDegrees.get(edge.from) ?? 0) + 1);
-		}
-		const tails = Object.keys(nodes).filter(
-			(id) => (outDegrees.get(id) ?? 0) === 0,
-		);
-		const fallbackKeys = Object.keys(nodes);
-		const fallback =
-			tails[0] ?? fallbackKeys[fallbackKeys.length - 1] ?? undefined;
-		return fallback ? compilePathTo(fallback) : [];
+		const fallbackId = pickNewestLeafId(nodes);
+		return fallbackId ? compilePathTo(fallbackId) : [];
 	},
-	findPredecessor: (toId) => {
-		const { edges } = get();
-		for (const edge of Object.values(edges)) {
-			if (edge.to === toId) {
-				return edge.from;
-			}
-		}
-		return undefined;
-	},
+	findPredecessor: (toId) => get().nodes[toId]?.parentId ?? undefined,
 	findTailOfThread: (fromId) => {
-		const { edges } = get();
-		const nextMap = new Map<NodeID, NodeID>();
-		for (const edge of Object.values(edges)) {
-			nextMap.set(edge.from, edge.to);
+		const { nodes } = get();
+		if (!nodes[fromId]) {
+			return fromId;
 		}
-		let current = fromId;
+		const childrenIndex = buildChildrenIndex(nodes);
 		const visited = new Set<NodeID>();
-		while (nextMap.has(current) && !visited.has(current)) {
-			visited.add(current);
-			current = nextMap.get(current) as NodeID;
+		let cursor = fromId;
+		while (nodes[cursor] && !visited.has(cursor)) {
+			visited.add(cursor);
+			const newestChild = pickNewestNode(childrenIndex.get(cursor) ?? []);
+			if (!newestChild) {
+				break;
+			}
+			cursor = newestChild.id;
 		}
-		return current;
+		return cursor;
+	},
+	createSystemMessage: (text) => {
+		const newId = uuidv4();
+		set((state) => {
+			const nodes: NodeMap = {
+				...state.nodes,
+				[newId]: {
+					id: newId,
+					role: "system",
+					text,
+					createdAt: Date.now(),
+					parentId: null,
+				},
+			};
+			return withDerivedGraph(nodes);
+		});
+		return newId;
 	},
 	activeTail: () => {
-		const { compileActive } = get();
-		const path = compileActive();
+		const path = get().compileActive();
 		if (path.length === 0) {
 			return undefined;
 		}
 		return path[path.length - 1]._metadata.uuid;
 	},
-	createSystemMessage: (text) => {
-		const newId = uuidv4();
-		set((state) => {
-			const nodes = { ...state.nodes };
-			nodes[newId] = {
-				id: newId,
-				role: "system",
-				text,
-				createdAt: Date.now(),
-			};
-			const edges = { ...state.edges };
-			const blockedEdges = new Set(state.blockedEdges);
-			return {
-				nodes,
-				edges,
-				roots: recomputeRoots(nodes, edges),
-				blockedEdges,
-			};
-		});
-		return newId;
-	},
 	createUserAfter: (parentId, text) => {
 		const newId = uuidv4();
 		set((state) => {
-			const nodes = { ...state.nodes };
-			nodes[newId] = {
-				id: newId,
-				role: "user",
-				text,
-				createdAt: Date.now(),
+			const safeParent = parentId && state.nodes[parentId] ? parentId : null;
+			const nodes: NodeMap = {
+				...state.nodes,
+				[newId]: {
+					id: newId,
+					role: "user",
+					text,
+					createdAt: Date.now(),
+					parentId: safeParent,
+				},
 			};
-
-			const edges = { ...state.edges };
-			if (parentId) {
-				edges[`${parentId}->${newId}`] = {
-					id: `${parentId}->${newId}`,
-					from: parentId,
-					to: newId,
-					kind: "sequence",
-				};
-			}
-
-			const blockedEdges = new Set(state.blockedEdges);
-			if (parentId) {
-				blockedEdges.delete(`${parentId}->${newId}`);
-			}
-
-			return {
-				nodes,
-				edges,
-				roots: recomputeRoots(nodes, edges),
-				blockedEdges,
-			};
+			return withDerivedGraph(nodes);
 		});
 		return newId;
 	},
@@ -326,32 +322,18 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 		}
 		const newId = uuidv4();
 		set((state) => {
-			const nodes = { ...state.nodes };
-			nodes[newId] = {
-				id: newId,
-				role: "assistant",
-				text: "",
-				createdAt: Date.now(),
-				status: "draft",
+			const nodes: NodeMap = {
+				...state.nodes,
+				[newId]: {
+					id: newId,
+					role: "assistant",
+					text: "",
+					createdAt: Date.now(),
+					status: "draft",
+					parentId,
+				},
 			};
-
-			const edges = { ...state.edges };
-			edges[`${parentId}->${newId}`] = {
-				id: `${parentId}->${newId}`,
-				from: parentId,
-				to: newId,
-				kind: "sequence",
-			};
-
-			const blockedEdges = new Set(state.blockedEdges);
-			blockedEdges.delete(`${parentId}->${newId}`);
-
-			return {
-				nodes,
-				edges,
-				roots: recomputeRoots(nodes, edges),
-				blockedEdges,
-			};
+			return withDerivedGraph(nodes);
 		});
 		return newId;
 	},
@@ -361,12 +343,14 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			if (!node) {
 				return state;
 			}
-			const nodes = { ...state.nodes };
-			nodes[nodeId] = {
-				...node,
-				text: `${node.text}${delta}`,
+			const nodes: NodeMap = {
+				...state.nodes,
+				[nodeId]: {
+					...node,
+					text: `${node.text}${delta}`,
+				},
 			};
-			return { nodes };
+			return { nodes } satisfies Partial<GraphState>;
 		}),
 	setNodeText: (nodeId, text) =>
 		set((state) => {
@@ -374,83 +358,51 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			if (!node) {
 				return state;
 			}
-			const nodes = { ...state.nodes };
-			nodes[nodeId] = {
-				...node,
-				text,
+			const nodes: NodeMap = {
+				...state.nodes,
+				[nodeId]: {
+					...node,
+					text,
+				},
 			};
-			return { nodes };
+			return { nodes } satisfies Partial<GraphState>;
 		}),
 	setNodeStatus: (nodeId, status) =>
 		set((state) => {
-			const node = state.nodes[nodeId] as GraphNode & { status?: string };
+			const node = state.nodes[nodeId];
 			if (!node) {
 				return state;
 			}
-			const nodes = { ...state.nodes };
-			nodes[nodeId] = {
-				...node,
-				status,
+			const nodes: NodeMap = {
+				...state.nodes,
+				[nodeId]: {
+					...node,
+					status,
+				},
 			};
-			return { nodes };
+			return { nodes } satisfies Partial<GraphState>;
 		}),
-	predecessorOf: (nodeId) => {
-		const { edges } = get();
-		for (const edge of Object.values(edges)) {
-			if (edge.to === nodeId) {
-				return edge.from;
-			}
-		}
-		return undefined;
-	},
+	predecessorOf: (nodeId) => get().nodes[nodeId]?.parentId ?? undefined,
 	canConnect: (source, target) => {
-		const { nodes, edges } = get();
+		const { nodes } = get();
 		if (!nodes[source] || !nodes[target] || source === target) {
 			return false;
 		}
-		const visited = new Set<NodeID>();
-		const stack: NodeID[] = [target];
-		while (stack.length > 0) {
-			const current = stack.pop() as NodeID;
-			if (current === source) {
-				return false;
-			}
-			if (visited.has(current)) {
-				continue;
-			}
-			visited.add(current);
-			for (const edge of Object.values(edges)) {
-				if (edge.from === current) {
-					stack.push(edge.to);
-				}
-			}
-		}
-		return true;
+		return !isAncestor(nodes, target, source);
 	},
 	connectSequence: (source, target) =>
 		set((state) => {
-			if (!state.nodes[source] || !state.nodes[target] || source === target) {
+			if (!state.nodes[source] || !state.nodes[target]) {
 				return state;
 			}
-			const edges = { ...state.edges };
-			for (const edge of Object.values(edges)) {
-				if (edge.to === target) {
-					delete edges[edge.id];
-				}
+			if (source === target || isAncestor(state.nodes, target, source)) {
+				return state;
 			}
-			edges[`${source}->${target}`] = {
-				id: `${source}->${target}`,
-				from: source,
-				to: target,
-				kind: "sequence",
+			const nodes: NodeMap = {
+				...state.nodes,
+				[target]: { ...state.nodes[target], parentId: source },
 			};
-			const blockedEdges = new Set(state.blockedEdges);
-			blockedEdges.delete(`${source}->${target}`);
-			return {
-				edges,
-				roots: recomputeRoots(state.nodes, edges),
-				blockedEdges,
-			};
+			return withDerivedGraph(nodes);
 		}),
 	duplicateNodeAfter: (parentId) => {
 		const parent = get().nodes[parentId];
@@ -459,27 +411,17 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 		}
 		const newId = uuidv4();
 		set((state) => {
-			const nodes = { ...state.nodes };
-			nodes[newId] = {
-				id: newId,
-				role: parent.role,
-				text: parent.text,
-				createdAt: Date.now(),
+			const nodes: NodeMap = {
+				...state.nodes,
+				[newId]: {
+					id: newId,
+					role: parent.role,
+					text: parent.text,
+					createdAt: Date.now(),
+					parentId,
+				},
 			};
-
-			const edges = { ...state.edges };
-			const edgeId = `${parentId}->${newId}`;
-			edges[edgeId] = {
-				id: edgeId,
-				from: parentId,
-				to: newId,
-				kind: "sequence",
-			};
-
-			const blockedEdges = new Set(state.blockedEdges);
-			blockedEdges.delete(edgeId);
-			const roots = recomputeRoots(nodes, edges);
-			return { nodes, edges, roots, blockedEdges };
+			return withDerivedGraph(nodes);
 		});
 		return newId;
 	},
@@ -488,78 +430,19 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			if (!state.nodes[id]) {
 				return state;
 			}
-			const predecessors = Array.from(
-				new Set(
-					Object.values(state.edges)
-						.filter((edge) => edge.to === id)
-						.map((edge) => edge.from),
-				),
-			);
-			const successors = Array.from(
-				new Set(
-					Object.values(state.edges)
-						.filter((edge) => edge.from === id)
-						.map((edge) => edge.to),
-				),
-			);
-			const nodes = { ...state.nodes };
-			delete nodes[id];
-
-			const edges = { ...state.edges };
-			for (const edge of Object.values(edges)) {
-				if (edge.from === id || edge.to === id) {
-					delete edges[edge.id];
-				}
+			const idsToRemove = collectDescendantIds(state.nodes, id);
+			if (idsToRemove.size === 0) {
+				return state;
 			}
-
-			const blocked = new Set(state.blockedEdges);
-			for (const entry of blocked) {
-				if (entry.startsWith(`${id}->`) || entry.endsWith(`->${id}`)) {
-					blocked.delete(entry);
-				}
+			const nodes: NodeMap = { ...state.nodes };
+			for (const nodeId of idsToRemove) {
+				delete nodes[nodeId];
 			}
-
-			const connectCandidates =
-				predecessors.length > 0 && successors.length > 0
-					? { predecessors, successors }
-					: undefined;
-			if (connectCandidates) {
-				for (const predecessor of connectCandidates.predecessors) {
-					if (!nodes[predecessor]) {
-						continue;
-					}
-					for (const successor of connectCandidates.successors) {
-						if (!nodes[successor] || predecessor === successor) {
-							continue;
-						}
-						const edgeId = `${predecessor}->${successor}`;
-						if (edges[edgeId]) {
-							continue;
-						}
-						if (wouldCreateCycle(edges, predecessor, successor)) {
-							continue;
-						}
-						edges[edgeId] = {
-							id: edgeId,
-							from: predecessor,
-							to: successor,
-							kind: "sequence",
-						};
-						blocked.delete(edgeId);
-					}
-				}
-			}
-
-			const roots = recomputeRoots(nodes, edges);
-			const { activeTargetId } = state;
-			const nextActive = activeTargetId === id ? undefined : activeTargetId;
-			return {
-				nodes,
-				edges,
-				roots,
-				blockedEdges: blocked,
-				activeTargetId: nextActive,
-			};
+			const nextActive =
+				state.activeTargetId && !nodes[state.activeTargetId]
+					? undefined
+					: state.activeTargetId;
+			return withDerivedGraph(nodes, { activeTargetId: nextActive });
 		}),
 	reset: () =>
 		set({
@@ -567,57 +450,51 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			edges: {},
 			roots: [],
 			activeTargetId: undefined,
-			blockedEdges: new Set(),
 		}),
 	exportSnapshot: () => {
 		const state = get();
 		const nodes = Object.fromEntries(
-			Object.entries(state.nodes).map(([id, node]) => [id, { ...node }]),
-		);
-		const edges = Object.fromEntries(
-			Object.entries(state.edges).map(([id, edge]) => [id, { ...edge }]),
+			Object.entries(state.nodes).map(([id, node]) => [
+				id,
+				{ ...node, parentId: node.parentId ?? null },
+			]),
 		);
 		return {
 			version: 1,
 			exportedAt: new Date().toISOString(),
-			graph: {
+			tree: {
 				nodes,
-				edges,
-				roots: [...state.roots],
 			},
-			blockedEdges: Array.from(state.blockedEdges),
 			activeTargetId: state.activeTargetId,
-		};
+		} satisfies ConversationSnapshot;
 	},
-		importSnapshot: (snapshot) => {
-			if (snapshot.version !== 1) {
-				throw new Error(`Unsupported snapshot version: ${snapshot.version}`);
-			}
-			const nodesRaw = snapshot.graph?.nodes ?? {};
-			const edgesRaw = snapshot.graph?.edges ?? {};
-			const nodes = Object.fromEntries(
-				Object.entries(nodesRaw).map(([id, node]) => [id, { ...node }]),
-			);
-			const edgesFiltered = Object.entries(edgesRaw).filter(([, edge]) => {
-				return Boolean(nodes[edge.from] && nodes[edge.to]);
-			});
-			const edges = Object.fromEntries(
-				edgesFiltered.map(([id, edge]) => [id, { ...edge }]),
-			);
-			const rootsRaw = snapshot.graph?.roots ?? [];
-			const rootsProvided = rootsRaw.filter((rootId) => nodes[rootId]);
-			const roots =
-				rootsProvided.length > 0 ? rootsProvided : recomputeRoots(nodes, edges);
-			const activeTargetId =
-				snapshot.activeTargetId && nodes[snapshot.activeTargetId]
-					? snapshot.activeTargetId
-					: undefined;
-			set({
-				nodes,
-				edges,
-				roots,
-				activeTargetId,
-				blockedEdges: new Set(snapshot.blockedEdges ?? []),
-			});
-		},
+	importSnapshot: (snapshot) => {
+		if (snapshot.version !== 1) {
+			throw new Error(`Unsupported snapshot version: ${snapshot.version}`);
+		}
+		const nodesRaw = snapshot.tree?.nodes ?? {};
+		const nodes: NodeMap = {};
+		for (const [id, node] of Object.entries(nodesRaw)) {
+			const createdAt =
+				typeof node.createdAt === "number" ? node.createdAt : Date.now();
+			const parentId =
+				node.parentId && nodesRaw[node.parentId] ? node.parentId : null;
+			nodes[id] = {
+				id,
+				role: coerceRole(node.role),
+				text: node.text ?? "",
+				createdAt,
+				status: node.status,
+				parentId,
+			} satisfies GraphNode;
+		}
+		set(
+			withDerivedGraph(nodes, {
+				activeTargetId:
+					snapshot.activeTargetId && nodes[snapshot.activeTargetId]
+						? snapshot.activeTargetId
+						: undefined,
+			}),
+		);
+	},
 }));
