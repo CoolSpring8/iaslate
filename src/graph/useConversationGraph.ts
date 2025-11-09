@@ -63,6 +63,34 @@ const recomputeRoots = (
 	return Object.keys(nodes).filter((id) => (incoming.get(id) ?? 0) === 0);
 };
 
+const wouldCreateCycle = (
+	edges: Record<string, GraphEdge>,
+	source: NodeID,
+	target: NodeID,
+) => {
+	if (source === target) {
+		return true;
+	}
+	const visited = new Set<NodeID>();
+	const stack: NodeID[] = [target];
+	while (stack.length > 0) {
+		const current = stack.pop() as NodeID;
+		if (current === source) {
+			return true;
+		}
+		if (visited.has(current)) {
+			continue;
+		}
+		visited.add(current);
+		for (const edge of Object.values(edges)) {
+			if (edge.from === current) {
+				stack.push(edge.to);
+			}
+		}
+	}
+	return false;
+};
+
 export const useConversationGraph = create<GraphState>((set, get) => ({
 	nodes: {},
 	edges: {},
@@ -433,6 +461,20 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			if (!state.nodes[id]) {
 				return state;
 			}
+			const predecessors = Array.from(
+				new Set(
+					Object.values(state.edges)
+						.filter((edge) => edge.to === id)
+						.map((edge) => edge.from),
+				),
+			);
+			const successors = Array.from(
+				new Set(
+					Object.values(state.edges)
+						.filter((edge) => edge.from === id)
+						.map((edge) => edge.to),
+				),
+			);
 			const nodes = { ...state.nodes };
 			delete nodes[id];
 
@@ -447,6 +489,37 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			for (const entry of blocked) {
 				if (entry.startsWith(`${id}->`) || entry.endsWith(`->${id}`)) {
 					blocked.delete(entry);
+				}
+			}
+
+			const connectCandidates =
+				predecessors.length > 0 && successors.length > 0
+					? { predecessors, successors }
+					: undefined;
+			if (connectCandidates) {
+				for (const predecessor of connectCandidates.predecessors) {
+					if (!nodes[predecessor]) {
+						continue;
+					}
+					for (const successor of connectCandidates.successors) {
+						if (!nodes[successor] || predecessor === successor) {
+							continue;
+						}
+						const edgeId = `${predecessor}->${successor}`;
+						if (edges[edgeId]) {
+							continue;
+						}
+						if (wouldCreateCycle(edges, predecessor, successor)) {
+							continue;
+						}
+						edges[edgeId] = {
+							id: edgeId,
+							from: predecessor,
+							to: successor,
+							kind: "sequence",
+						};
+						blocked.delete(edgeId);
+					}
 				}
 			}
 
