@@ -7,6 +7,7 @@ interface HeaderProps {
 	view: "chat" | "diagram";
 	onViewChange: (value: "chat" | "diagram") => void;
 	onClear: () => void;
+	onImport: () => void;
 	onExport: () => void;
 	onOpenSettings: () => void;
 }
@@ -18,6 +19,7 @@ const Header = ({
 	view,
 	onViewChange,
 	onClear,
+	onImport,
 	onExport,
 	onOpenSettings,
 }: HeaderProps) => (
@@ -53,6 +55,11 @@ const Header = ({
 				className="i-lucide-eraser w-5 h-5"
 				title="Clear conversation"
 				onClick={onClear}
+			/>
+			<UnstyledButton
+				className="i-lucide-file-input w-5 h-5"
+				title="Import from JSON"
+				onClick={onImport}
 			/>
 			<UnstyledButton
 				className="i-lucide-file-output w-5 h-5"

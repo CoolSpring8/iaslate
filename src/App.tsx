@@ -4,6 +4,7 @@ import { get, set } from "idb-keyval";
 import { OpenAI } from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import {
+	type ChangeEvent,
 	type MutableRefObject,
 	useEffect,
 	useMemo,
@@ -18,6 +19,7 @@ import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import MessageItem from "./components/MessageItem";
 import SettingsModal from "./components/SettingsModal";
+import type { ConversationSnapshot } from "./graph/types";
 import { useConversationGraph } from "./graph/useConversationGraph";
 
 const baseURLKey = "iaslate_baseURL";
@@ -101,6 +103,8 @@ const App = () => {
 		activeTail,
 		removeNode: removeNodeFromGraph,
 		reset: resetGraph,
+		exportSnapshot,
+		importSnapshot,
 	} = useConversationGraph(
 		useShallow((state) => ({
 			nodes: state.nodes,
@@ -122,6 +126,8 @@ const App = () => {
 			activeTail: state.activeTail,
 			removeNode: state.removeNode,
 			reset: state.reset,
+			exportSnapshot: state.exportSnapshot,
+			importSnapshot: state.importSnapshot,
 		})),
 	);
 
@@ -163,32 +169,71 @@ const App = () => {
 
 	const streamControllersRef = useRef<Record<string, AbortController>>({});
 	const latestAssistantIdRef = useRef<string | undefined>(undefined);
+	const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-	const handleClearConversation = () => {
+	const abortActiveStreams = () => {
 		Object.values(streamControllersRef.current).forEach((controller) => {
 			controller.abort();
 		});
 		streamControllersRef.current = {};
 		latestAssistantIdRef.current = undefined;
 		setIsGenerating(false);
+	};
+
+	const resetComposerState = () => {
 		setEditingNodeId(undefined);
 		setPrompt("");
+	};
+
+	const handleClearConversation = () => {
+		abortActiveStreams();
+		resetComposerState();
 		resetGraph();
 		const systemId = createSystemMessage(defaultSystemPrompt);
 		setActiveTarget(systemId);
 	};
 
 	const handleExport = () => {
-		const blob = new Blob([JSON.stringify(chatMessages, null, 2)], {
+		const snapshot = exportSnapshot();
+		const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
 			type: "application/json",
 		});
 		const url = URL.createObjectURL(blob);
 		const anchor = document.createElement("a");
+		const safeTimestamp = snapshot.exportedAt.replace(/[:]/g, "-");
 		anchor.href = url;
-		anchor.download = `messages_${new Date().toISOString()}.json`;
+		anchor.download = `iaslate_graph_${safeTimestamp}.json`;
 		anchor.click();
 		URL.revokeObjectURL(url);
-		toast.success("Exported to JSON");
+		toast.success("Exported conversation graph");
+	};
+
+	const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		if (!file) {
+			event.target.value = "";
+			return;
+		}
+		try {
+			const fileContents = await file.text();
+			const snapshot = JSON.parse(fileContents) as ConversationSnapshot;
+			abortActiveStreams();
+			resetComposerState();
+			importSnapshot(snapshot);
+			setView("chat");
+			toast.success("Conversation imported");
+		} catch (error) {
+			console.error(error);
+			const message =
+				error instanceof Error ? error.message : "Failed to import conversation";
+			toast.error(`Import failed: ${message}`);
+		} finally {
+			event.target.value = "";
+		}
+	};
+
+	const handleImportClick = () => {
+		fileInputRef.current?.click();
 	};
 
 	const handleActivateThread = (targetId: string | undefined) => {
@@ -386,8 +431,18 @@ const App = () => {
 				view={view}
 				onViewChange={setView}
 				onClear={handleClearConversation}
+				onImport={handleImportClick}
 				onExport={handleExport}
 				onOpenSettings={onSettingsOpen}
+			/>
+			<input
+				ref={fileInputRef}
+				type="file"
+				accept="application/json"
+				className="hidden"
+				onChange={handleImportFile}
+				aria-hidden="true"
+				tabIndex={-1}
 			/>
 			{view === "chat" ? (
 				<>

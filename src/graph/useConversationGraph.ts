@@ -1,7 +1,13 @@
 import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import type { Message } from "../types";
-import type { ConversationGraph, GraphEdge, GraphNode, NodeID } from "./types";
+import type {
+	ConversationGraph,
+	ConversationSnapshot,
+	GraphEdge,
+	GraphNode,
+	NodeID,
+} from "./types";
 
 interface GraphState extends ConversationGraph {
 	activeTargetId?: NodeID;
@@ -30,6 +36,8 @@ interface GraphState extends ConversationGraph {
 	duplicateNodeAfter: (parentId: NodeID) => NodeID | undefined;
 	removeNode: (id: NodeID) => void;
 	reset: () => void;
+	exportSnapshot: () => ConversationSnapshot;
+	importSnapshot: (snapshot: ConversationSnapshot) => void;
 }
 
 const coerceRole = (role: string): GraphNode["role"] => {
@@ -461,4 +469,55 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 			activeTargetId: undefined,
 			blockedEdges: new Set(),
 		}),
+	exportSnapshot: () => {
+		const state = get();
+		const nodes = Object.fromEntries(
+			Object.entries(state.nodes).map(([id, node]) => [id, { ...node }]),
+		);
+		const edges = Object.fromEntries(
+			Object.entries(state.edges).map(([id, edge]) => [id, { ...edge }]),
+		);
+		return {
+			version: 1,
+			exportedAt: new Date().toISOString(),
+			graph: {
+				nodes,
+				edges,
+				roots: [...state.roots],
+			},
+			blockedEdges: Array.from(state.blockedEdges),
+			activeTargetId: state.activeTargetId,
+		};
+	},
+	importSnapshot: (snapshot) => {
+		if (snapshot.version !== 1) {
+			throw new Error(`Unsupported snapshot version: ${snapshot.version}`);
+		}
+		const nodesRaw = snapshot.graph?.nodes ?? {};
+		const edgesRaw = snapshot.graph?.edges ?? {};
+		const nodes = Object.fromEntries(
+			Object.entries(nodesRaw).map(([id, node]) => [id, { ...node }]),
+		);
+		const edgesFiltered = Object.entries(edgesRaw).filter(([, edge]) => {
+			return Boolean(nodes[edge.from] && nodes[edge.to]);
+		});
+		const edges = Object.fromEntries(
+			edgesFiltered.map(([id, edge]) => [id, { ...edge }]),
+		);
+		const rootsRaw = snapshot.graph?.roots ?? [];
+		const rootsProvided = rootsRaw.filter((rootId) => nodes[rootId]);
+		const roots =
+			rootsProvided.length > 0 ? rootsProvided : recomputeRoots(nodes, edges);
+		const activeTargetId =
+			snapshot.activeTargetId && nodes[snapshot.activeTargetId]
+				? snapshot.activeTargetId
+				: undefined;
+		set({
+			nodes,
+			edges,
+			roots,
+			activeTargetId,
+			blockedEdges: new Set(snapshot.blockedEdges ?? []),
+		});
+	},
 }));

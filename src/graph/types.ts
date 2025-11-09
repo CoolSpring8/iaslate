@@ -22,3 +22,13 @@ export interface ConversationGraph {
 	edges: Record<EdgeID, GraphEdge>;
 	roots: NodeID[];
 }
+
+export interface ConversationSnapshotV1 {
+	version: 1;
+	exportedAt: string;
+	graph: ConversationGraph;
+	blockedEdges: EdgeID[];
+	activeTargetId?: NodeID;
+}
+
+export type ConversationSnapshot = ConversationSnapshotV1;
