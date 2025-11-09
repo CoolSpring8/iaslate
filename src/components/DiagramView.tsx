@@ -27,6 +27,9 @@ const boxSize = {
 	height: 80,
 };
 
+const columnGap = 64;
+const rowGap = 80;
+
 const nodeStyleBase = {
 	border: "1px solid #e2e8f0",
 	borderRadius: 8,
@@ -95,6 +98,108 @@ const DiagramView = ({
 		}
 		return { nodes: nodeIds, edges: edgeIds };
 	}, [hoverTargetId, compilePathTo, graphNodes, graphEdges]);
+
+	const laneAssignments = useMemo(() => {
+		const assignments = new Map<string, number>();
+		const nodes = Object.values(graphNodes);
+		if (nodes.length === 0) {
+			return assignments;
+		}
+
+		const childrenByParent = new Map<string, typeof nodes>();
+		for (const node of nodes) {
+			if (!node.parentId) {
+				continue;
+			}
+			const list = childrenByParent.get(node.parentId) ?? [];
+			list.push(node);
+			childrenByParent.set(node.parentId, list);
+		}
+		for (const [, list] of childrenByParent) {
+			list.sort((a, b) => a.createdAt - b.createdAt);
+		}
+
+		const roots = nodes
+			.filter((node) => !node.parentId)
+			.sort((a, b) => a.createdAt - b.createdAt);
+
+		let nextLane = 0;
+		for (const root of roots) {
+			if (!assignments.has(root.id)) {
+				assignments.set(root.id, nextLane);
+				nextLane += 1;
+			}
+		}
+
+		const pickContinuation = (parentId: string, children: typeof nodes) => {
+			const preferred = children.find((child) =>
+				activePathIds.nodes.has(child.id),
+			);
+			return preferred ?? children[0];
+		};
+
+		const assignChildren = (parentId: string) => {
+			const parentLane = assignments.get(parentId);
+			const children = childrenByParent.get(parentId);
+			if (!children?.length) {
+				return;
+			}
+			const continuation = pickContinuation(parentId, children);
+			if (continuation) {
+				if (parentLane !== undefined) {
+					assignments.set(continuation.id, parentLane);
+				} else if (!assignments.has(continuation.id)) {
+					assignments.set(continuation.id, nextLane++);
+				}
+			}
+			for (const child of children) {
+				if (child.id === continuation?.id) {
+					continue;
+				}
+				if (!assignments.has(child.id)) {
+					assignments.set(child.id, nextLane);
+					nextLane += 1;
+				}
+			}
+			for (const child of children) {
+				assignChildren(child.id);
+			}
+		};
+
+		for (const root of roots) {
+			assignChildren(root.id);
+		}
+
+		for (const node of nodes) {
+			if (!assignments.has(node.id)) {
+				assignments.set(node.id, nextLane);
+				nextLane += 1;
+			}
+		}
+		return assignments;
+	}, [graphNodes, activePathIds]);
+
+	const depthByNode = useMemo(() => {
+		const depthMap = new Map<string, number>();
+		const getDepth = (nodeId: string): number => {
+			const cached = depthMap.get(nodeId);
+			if (typeof cached === "number") {
+				return cached;
+			}
+			const node = graphNodes[nodeId];
+			if (!node || !node.parentId) {
+				depthMap.set(nodeId, 0);
+				return 0;
+			}
+			const depth = getDepth(node.parentId) + 1;
+			depthMap.set(nodeId, depth);
+			return depth;
+		};
+		for (const nodeId of Object.keys(graphNodes)) {
+			getDepth(nodeId);
+		}
+		return depthMap;
+	}, [graphNodes]);
 
 	const [layoutNodes, setLayoutNodes] = useState<Node[]>([]);
 	const [layoutEdges, setLayoutEdges] = useState<Edge[]>([]);
@@ -201,7 +306,14 @@ const DiagramView = ({
 
 						return {
 							id: child.id,
-							position: { x: child.x ?? 0, y: child.y ?? 0 },
+							position: {
+								x:
+									(laneAssignments.get(child.id) ?? laneAssignments.size) *
+									(boxSize.width + columnGap),
+								y:
+									child.y ??
+									(depthByNode.get(child.id) ?? 0) * (boxSize.height + rowGap),
+							},
 							data: { label },
 							style,
 						} satisfies Node;
@@ -248,7 +360,15 @@ const DiagramView = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [graphNodes, graphEdges, activeTargetId, activePathIds, previewPathIds]);
+	}, [
+		graphNodes,
+		graphEdges,
+		activeTargetId,
+		activePathIds,
+		previewPathIds,
+		laneAssignments,
+		depthByNode,
+	]);
 
 	const hasGraphData =
 		layoutNodes.length > 0 || Object.keys(graphNodes).length > 0;
