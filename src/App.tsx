@@ -97,20 +97,19 @@ const App = () => {
 		setNodeStatus,
 		duplicateNodeAfter,
 		detachBetween,
-		findTailOfThread,
-		predecessorOf,
-		compilePathTo,
-		activeTail,
-		removeNode: removeNodeFromGraph,
-		reset: resetGraph,
-		exportSnapshot,
-		importSnapshot,
-		findAmbiguousAncestor,
-	} = useConversationGraph(
-		useShallow((state) => ({
-			nodes: state.nodes,
-			edges: state.edges,
-			activeTargetId: state.activeTargetId,
+	findTailOfThread,
+	predecessorOf,
+	compilePathTo,
+	activeTail,
+	removeNode: removeNodeFromGraph,
+	reset: resetGraph,
+	exportSnapshot,
+	importSnapshot,
+} = useConversationGraph(
+	useShallow((state) => ({
+		nodes: state.nodes,
+		edges: state.edges,
+		activeTargetId: state.activeTargetId,
 			setActiveTarget: state.setActiveTarget,
 			createSystemMessage: state.createSystemMessage,
 			isEmpty: state.isEmpty,
@@ -125,13 +124,12 @@ const App = () => {
 			predecessorOf: state.predecessorOf,
 			compilePathTo: state.compilePathTo,
 			activeTail: state.activeTail,
-			removeNode: state.removeNode,
-			reset: state.reset,
-			exportSnapshot: state.exportSnapshot,
-			importSnapshot: state.importSnapshot,
-			findAmbiguousAncestor: state.findAmbiguousAncestor,
-		})),
-	);
+		removeNode: state.removeNode,
+		reset: state.reset,
+		exportSnapshot: state.exportSnapshot,
+		importSnapshot: state.importSnapshot,
+	})),
+);
 
 	const chatMessages = useMemo(() => {
 		const target = activeTargetId ?? activeTail();
@@ -204,10 +202,10 @@ const App = () => {
 		const anchor = document.createElement("a");
 		const safeTimestamp = snapshot.exportedAt.replace(/[:]/g, "-");
 		anchor.href = url;
-		anchor.download = `iaslate_graph_${safeTimestamp}.json`;
+		anchor.download = `iaslate_tree_${safeTimestamp}.json`;
 		anchor.click();
 		URL.revokeObjectURL(url);
-		toast.success("Exported conversation graph");
+		toast.success("Exported conversation tree");
 	};
 
 	const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -311,17 +309,6 @@ const App = () => {
 		let resolvedParentId = activeTail() ?? activeTargetId;
 		if (!resolvedParentId) {
 			resolvedParentId = createSystemMessage(defaultSystemPrompt);
-		}
-		const ambiguousNodeId = findAmbiguousAncestor(resolvedParentId);
-		if (ambiguousNodeId) {
-			const conflictedNode = graphNodes[ambiguousNodeId];
-			const conflictLabel = conflictedNode
-				? `"${conflictedNode.text.slice(0, 60)}"`
-				: ambiguousNodeId;
-			toast.error(
-				`Conversation path is ambiguous near ${conflictLabel}. Detach extra incoming edges before continuing.`,
-			);
-			return;
 		}
 		if (trimmedPrompt.length > 0) {
 			resolvedParentId = createUserAfter(resolvedParentId, trimmedPrompt);

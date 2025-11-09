@@ -131,7 +131,7 @@ const DiagramView = ({
 			}
 		}
 
-		const pickContinuation = (parentId: string, children: typeof nodes) => {
+			const pickContinuation = (_parentId: string, children: typeof nodes) => {
 			const preferred = children.find((child) =>
 				activePathIds.nodes.has(child.id),
 			);
@@ -414,11 +414,11 @@ const DiagramView = ({
 					<Controls />
 				</ReactFlow>
 			) : (
-				<div className="flex h-full flex-col items-center justify-center text-sm text-slate-500">
-					<p className={twJoin("text-center", "max-w-xs")}>
-						Start a conversation to see the graph here.
-					</p>
-				</div>
+					<div className="flex h-full flex-col items-center justify-center text-sm text-slate-500">
+						<p className={twJoin("text-center", "max-w-xs")}>
+							Start a conversation to see the thread tree here.
+						</p>
+					</div>
 			)}
 		</div>
 	);

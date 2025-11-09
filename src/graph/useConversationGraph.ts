@@ -37,7 +37,6 @@ interface GraphState extends ConversationGraph {
 	reset: () => void;
 	exportSnapshot: () => ConversationSnapshot;
 	importSnapshot: (snapshot: ConversationSnapshot) => void;
-	findAmbiguousAncestor: (target: NodeID) => NodeID | undefined;
 }
 
 type GraphExtras = Partial<Omit<GraphState, keyof ConversationGraph>>;
@@ -225,27 +224,6 @@ export const useConversationGraph = create<GraphState>((set, get) => ({
 		}
 		path.reverse();
 		return path.map(toMessage);
-	},
-	findAmbiguousAncestor: (target) => {
-		const { nodes } = get();
-		if (!nodes[target]) {
-			return undefined;
-		}
-		const seen = new Set<NodeID>();
-		let cursor: NodeID | null = target;
-		while (cursor !== null) {
-			const currentId = cursor as NodeID;
-			if (seen.has(currentId)) {
-				return currentId;
-			}
-			seen.add(currentId);
-			const parentId: NodeID | null = nodes[currentId]?.parentId ?? null;
-			if (!parentId) {
-				break;
-			}
-			cursor = parentId;
-		}
-		return undefined;
 	},
 	compileActive: () => {
 		const { activeTargetId, compilePathTo, nodes } = get();
