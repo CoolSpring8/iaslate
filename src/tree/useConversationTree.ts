@@ -366,25 +366,25 @@ export const useConversationTree = create<TreeState>((set, get) => ({
 			};
 			return withDerivedTree(nodes);
 		}),
-	cloneNode: (sourceId) => {
-		const source = get().nodes[sourceId];
-		if (!source) {
-			return undefined;
-		}
+		cloneNode: (sourceId) => {
+			const source = get().nodes[sourceId];
+			if (!source) {
+				return undefined;
+			}
 		const newId = uuidv4();
 		set((state) => {
 			const nodes: NodeMap = {
 				...state.nodes,
-				[newId]: {
-					id: newId,
-					role: source.role,
-					text: source.text,
-					createdAt: Date.now(),
-					parentId: sourceId,
-				},
-			};
-			return withDerivedTree(nodes);
-		});
+					[newId]: {
+						id: newId,
+						role: source.role,
+						text: source.text,
+						createdAt: Date.now(),
+						parentId: source.parentId ?? null,
+					},
+				};
+				return withDerivedTree(nodes);
+			});
 		return newId;
 	},
 	removeNode: (id) =>
