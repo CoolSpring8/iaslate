@@ -17,9 +17,10 @@ A tiny browser‑based chat UI packaged as a single static HTML file. It is inte
 ## Usage Tips
 
 - Enter a prompt and press Enter to send (Shift+Enter for newline).
-- Hover over a message to reveal actions: copy, edit, delete, unlink (remove this message and all messages after).
+- Hover over a message to reveal actions: copy, edit, delete (removes the node and reconnects its children to the parent), or split (detach from its parent to start a new thread).
 - Drop plaintext files into the message area to append their contents to the input.
-- Export the conversation to JSON from the header.
+- Import or export the full conversation tree via the header buttons; exported JSON captures every branch, not just the active chat path.
+- Snapshots now use the tree format introduced in this refactor; older graph exports are not supported.
 
 ## Security Notes
 
