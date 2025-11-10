@@ -294,9 +294,9 @@ const DiagramView = ({
 								source,
 								target,
 								type: "smoothstep",
-								animated: isActive,
+								animated: false,
 								style: {
-									strokeWidth: isActive ? 3 : 1.5,
+									strokeWidth: isActive ? 2 : 1.5,
 									stroke: isActive ? "#2563eb" : "#94a3b8",
 								},
 							} as Edge,
