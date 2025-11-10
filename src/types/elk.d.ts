@@ -1,4 +1,4 @@
 declare module "elkjs/lib/elk.bundled.js" {
-	const ELK: any;
-	export default ELK;
+	export * from "elkjs";
+	export { default } from "elkjs";
 }
