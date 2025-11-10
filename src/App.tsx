@@ -218,7 +218,7 @@ const App = () => {
 			abortActiveStreams();
 			resetComposerState();
 			importSnapshot(snapshot);
-			setView("chat");
+			
 			toast.success("Conversation imported");
 		} catch (error) {
 			console.error(error);
@@ -244,7 +244,7 @@ const App = () => {
 		setEditingNodeId(undefined);
 		setPrompt("");
 		setIsGenerating(false);
-		setView("chat");
+		
 	};
 
 	const handleDuplicateFromNode = (nodeId: string) => {
