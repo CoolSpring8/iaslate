@@ -1,10 +1,4 @@
-import {
-	Button,
-	Group,
-	Modal,
-	PasswordInput,
-	TextInput,
-} from "@mantine/core";
+import { Button, Group, Modal, PasswordInput, TextInput } from "@mantine/core";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 

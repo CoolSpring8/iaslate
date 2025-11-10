@@ -13,6 +13,7 @@ import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
 import { useShallow } from "zustand/react/shallow";
 import { useConversationTree } from "../tree/useConversationTree";
+import NodeContextMenu from "./NodeContextMenu";
 
 interface DiagramViewProps {
 	onNodeDoubleClick?: (nodeId: string) => void;
@@ -180,6 +181,9 @@ const DiagramView = ({
 
 	const [layoutNodes, setLayoutNodes] = useState<Node[]>([]);
 	const [layoutEdges, setLayoutEdges] = useState<Edge[]>([]);
+	const [contextMenuNodeId, setContextMenuNodeId] = useState<string | null>(
+		null,
+	);
 
 	useEffect(() => {
 		const children = Object.values(treeNodes).map((node) => ({
@@ -332,41 +336,65 @@ const DiagramView = ({
 	return (
 		<div className="w-full h-full">
 			{hasGraphData ? (
-				<ReactFlow
-					nodes={layoutNodes}
-					edges={layoutEdges}
-					fitView
-					nodesConnectable
-					nodesDraggable={false}
-					zoomOnDoubleClick={false}
-					onNodeDoubleClick={(_, node) => {
-						onNodeDoubleClick?.(node.id);
+				<NodeContextMenu
+					targetId={contextMenuNodeId}
+					onClose={() => {
+						setContextMenuNodeId(null);
 					}}
-					onConnect={(connection: Connection) => {
-						if (!connection.source || !connection.target) {
-							return;
-						}
-						if (canReparent(connection.source, connection.target)) {
-							reparentNode(connection.target, connection.source);
-						}
-					}}
-					onEdgesDelete={(edgesDeleted) => {
-						edgesDeleted.forEach((edge) => {
-							if (edge.target) {
-								splitBranch(edge.target);
-							}
-						});
-					}}
-					onNodesDelete={(nodesDeleted) => {
-						nodesDeleted.forEach((node) => {
-							removeNode(node.id);
-						});
+					onBranch={onBranchFromNode}
+					onDuplicate={onDuplicateFromNode}
+					onRemove={(nodeId) => {
+						removeNode(nodeId);
 					}}
 				>
-					<Background />
-					<MiniMap />
-					<Controls />
-				</ReactFlow>
+					<ReactFlow
+						nodes={layoutNodes}
+						edges={layoutEdges}
+						fitView
+						nodesConnectable
+						nodesDraggable={false}
+						zoomOnDoubleClick={false}
+						onPaneClick={() => {
+							setContextMenuNodeId(null);
+						}}
+						onPaneContextMenu={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+							setContextMenuNodeId(null);
+						}}
+						onNodeDoubleClick={(_, node) => {
+							onNodeDoubleClick?.(node.id);
+						}}
+						onNodeContextMenu={(event, node) => {
+							event.preventDefault();
+							setContextMenuNodeId(node.id);
+						}}
+						onConnect={(connection: Connection) => {
+							if (!connection.source || !connection.target) {
+								return;
+							}
+							if (canReparent(connection.source, connection.target)) {
+								reparentNode(connection.target, connection.source);
+							}
+						}}
+						onEdgesDelete={(edgesDeleted) => {
+							edgesDeleted.forEach((edge) => {
+								if (edge.target) {
+									splitBranch(edge.target);
+								}
+							});
+						}}
+						onNodesDelete={(nodesDeleted) => {
+							nodesDeleted.forEach((node) => {
+								removeNode(node.id);
+							});
+						}}
+					>
+						<Background />
+						<MiniMap />
+						<Controls />
+					</ReactFlow>
+				</NodeContextMenu>
 			) : (
 				<div className="flex h-full flex-col items-center justify-center text-sm text-slate-500">
 					<p className={twJoin("text-center", "max-w-xs")}>
