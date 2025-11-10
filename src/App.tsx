@@ -345,7 +345,7 @@ const App = () => {
 			setNodeStatus(assistantId, "final");
 		} catch (error) {
 			if (abortController.signal.aborted) {
-				setNodeStatus(assistantId, "error");
+				setNodeStatus(assistantId, "draft");
 			} else {
 				setNodeStatus(assistantId, "error");
 				throw error;
