@@ -7,7 +7,7 @@ import {
 	type Node,
 	ReactFlow,
 } from "@xyflow/react";
-import { type PointerEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
@@ -48,7 +48,6 @@ const DiagramView = ({
 		edges: treeEdges,
 		activeTargetId,
 		compileActive,
-		compilePathTo,
 		canReparent,
 		reparentNode,
 		splitBranch,
@@ -59,20 +58,12 @@ const DiagramView = ({
 			edges: state.edges,
 			activeTargetId: state.activeTargetId,
 			compileActive: state.compileActive,
-			compilePathTo: state.compilePathTo,
 			canReparent: state.canReparent,
 			reparentNode: state.reparentNode,
 			splitBranch: state.splitBranch,
 			removeNode: state.removeNode,
 		})),
 	);
-
-	const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
-	useEffect(() => {
-		if (hoverTargetId && !treeNodes[hoverTargetId]) {
-			setHoverTargetId(null);
-		}
-	}, [hoverTargetId, treeNodes]);
 
 	const activePathIds = useMemo(() => {
 		const messages = compileActive();
@@ -84,20 +75,6 @@ const DiagramView = ({
 		}
 		return { nodes: nodeIds, edges: edgeIds };
 	}, [compileActive, treeNodes, treeEdges, activeTargetId]);
-
-	const previewPathIds = useMemo(() => {
-		if (!hoverTargetId) {
-			return { nodes: new Set<string>(), edges: new Set<string>() };
-		}
-		const messages = compilePathTo(hoverTargetId);
-		const ids = messages.map((message) => message._metadata.uuid);
-		const nodeIds = new Set(ids);
-		const edgeIds = new Set<string>();
-		for (let index = 1; index < ids.length; index += 1) {
-			edgeIds.add(`${ids[index - 1]}->${ids[index]}`);
-		}
-		return { nodes: nodeIds, edges: edgeIds };
-	}, [hoverTargetId, compilePathTo, treeNodes, treeEdges]);
 
 	const laneAssignments = useMemo(() => {
 		const assignments = new Map<string, number>();
@@ -201,12 +178,6 @@ const DiagramView = ({
 		return depthMap;
 	}, [treeNodes]);
 
-	const handleNodeButtonPointerDown = (
-		event: PointerEvent<HTMLButtonElement>,
-	) => {
-		event.stopPropagation();
-	};
-
 	const [layoutNodes, setLayoutNodes] = useState<Node[]>([]);
 	const [layoutEdges, setLayoutEdges] = useState<Edge[]>([]);
 
@@ -268,9 +239,8 @@ const DiagramView = ({
 								<div className="flex flex-none gap-1 opacity-70 hover:opacity-100">
 									<button
 										type="button"
-										className="i-lucide-git-branch-plus w-4 h-4 nodrag nopan"
+										className="i-lucide-git-branch-plus w-4 h-4"
 										title="Branch here"
-										onPointerDown={handleNodeButtonPointerDown}
 										onClick={(event) => {
 											event.stopPropagation();
 											onBranchFromNode?.(child.id);
@@ -278,9 +248,8 @@ const DiagramView = ({
 									/>
 									<button
 										type="button"
-										className="i-lucide-copy w-4 h-4 nodrag nopan"
+										className="i-lucide-copy w-4 h-4"
 										title="Duplicate here"
-										onPointerDown={handleNodeButtonPointerDown}
 										onClick={(event) => {
 											event.stopPropagation();
 											onDuplicateFromNode?.(child.id);
@@ -290,16 +259,11 @@ const DiagramView = ({
 							</div>
 						);
 
-						const isPreview = previewPathIds.nodes.has(child.id);
 						const isActive = activePathIds.nodes.has(child.id);
 						const style = {
 							...nodeStyleBase,
-							border: isPreview
-								? "2px dashed #0ea5e9"
-								: isActive
-									? "2px solid #2563eb"
-									: "1px solid #e2e8f0",
-							opacity: isPreview || isActive ? 1 : 0.7,
+							border: isActive ? "2px solid #2563eb" : "1px solid #e2e8f0",
+							opacity: isActive ? 1 : 0.7,
 						};
 
 						return {
@@ -323,7 +287,6 @@ const DiagramView = ({
 						if (!source || !target) {
 							return [];
 						}
-						const isPreview = previewPathIds.edges.has(edge.id);
 						const isActive = activePathIds.edges.has(edge.id);
 						return [
 							{
@@ -331,14 +294,10 @@ const DiagramView = ({
 								source,
 								target,
 								type: "smoothstep",
-								animated: isPreview || isActive,
+								animated: isActive,
 								style: {
-									strokeWidth: isPreview || isActive ? 3 : 1.5,
-									stroke: isPreview
-										? "#0ea5e9"
-										: isActive
-											? "#2563eb"
-											: "#94a3b8",
+									strokeWidth: isActive ? 3 : 1.5,
+									stroke: isActive ? "#2563eb" : "#94a3b8",
 								},
 							} as Edge,
 						];
@@ -363,7 +322,6 @@ const DiagramView = ({
 		treeEdges,
 		activeTargetId,
 		activePathIds,
-		previewPathIds,
 		laneAssignments,
 		depthByNode,
 	]);
@@ -384,14 +342,6 @@ const DiagramView = ({
 					onNodeDoubleClick={(_, node) => {
 						onNodeDoubleClick?.(node.id);
 					}}
-					onNodeMouseEnter={(_, node) => {
-						setHoverTargetId(node.id);
-					}}
-					onNodeMouseLeave={(_, node) => {
-						setHoverTargetId((previous) =>
-							previous === node.id ? null : previous,
-						);
-					}}
 					onConnect={(connection: Connection) => {
 						if (!connection.source || !connection.target) {
 							return;
@@ -411,12 +361,6 @@ const DiagramView = ({
 						nodesDeleted.forEach((node) => {
 							removeNode(node.id);
 						});
-					}}
-					onPaneClick={() => {
-						setHoverTargetId(null);
-					}}
-					onPaneMouseEnter={() => {
-						setHoverTargetId(null);
 					}}
 				>
 					<Background />

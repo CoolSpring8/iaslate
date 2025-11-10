@@ -16,6 +16,8 @@ interface TreeState extends ConversationTree {
 	splitBranch: (childId: NodeID) => void;
 	compilePathTo: (target: NodeID) => Message[];
 	compileActive: () => Message[];
+	tracePathIds: (target: NodeID) => NodeID[];
+	getActivePathIds: () => NodeID[];
 	setActiveTarget: (id: NodeID | undefined) => void;
 	findPredecessor: (toId: NodeID) => NodeID | undefined;
 	createSystemMessage: (text: string) => NodeID;
@@ -140,6 +142,26 @@ const toMessage = (node: TreeNode): Message => ({
 	_metadata: { uuid: node.id },
 });
 
+const buildPathIds = (nodes: NodeMap, target: NodeID): NodeID[] => {
+	if (!nodes[target]) {
+		return [];
+	}
+	const path: NodeID[] = [];
+	const visited = new Set<NodeID>();
+	let cursor: NodeID | null = target;
+	while (cursor !== null) {
+		const currentId: NodeID = cursor;
+		if (!nodes[currentId] || visited.has(currentId)) {
+			break;
+		}
+		visited.add(currentId);
+		path.push(currentId);
+		cursor = nodes[currentId]?.parentId ?? null;
+	}
+	path.reverse();
+	return path;
+};
+
 export const useConversationTree = create<TreeState>((set, get) => ({
 	nodes: {},
 	edges: {},
@@ -184,35 +206,28 @@ export const useConversationTree = create<TreeState>((set, get) => ({
 		}),
 	compilePathTo: (target) => {
 		const { nodes } = get();
-		if (!nodes[target]) {
-			return [];
-		}
-		const path: TreeNode[] = [];
-		const visited = new Set<NodeID>();
-		let cursor: NodeID | null = target;
-		while (cursor !== null) {
-			const currentId = cursor as NodeID;
-			if (visited.has(currentId)) {
-				break;
-			}
-			visited.add(currentId);
-			const node: TreeNode | undefined = nodes[currentId];
-			if (!node) {
-				break;
-			}
-			path.push(node);
-			cursor = node.parentId;
-		}
-		path.reverse();
-		return path.map(toMessage);
+		const pathIds = buildPathIds(nodes, target);
+		return pathIds.map((id) => {
+			const node = nodes[id];
+			return toMessage(node);
+		});
 	},
 	compileActive: () => {
-		const { activeTargetId, compilePathTo, nodes } = get();
-		if (activeTargetId) {
-			return compilePathTo(activeTargetId);
-		}
-		const fallbackId = pickNewestLeafId(nodes);
-		return fallbackId ? compilePathTo(fallbackId) : [];
+		const { getActivePathIds, nodes } = get();
+		const pathIds = getActivePathIds();
+		return pathIds.map((id) => {
+			const node = nodes[id];
+			return toMessage(node);
+		});
+	},
+	tracePathIds: (target) => {
+		const { nodes } = get();
+		return buildPathIds(nodes, target);
+	},
+	getActivePathIds: () => {
+		const { nodes, activeTargetId } = get();
+		const fallbackId = activeTargetId ?? pickNewestLeafId(nodes);
+		return fallbackId ? buildPathIds(nodes, fallbackId) : [];
 	},
 	findPredecessor: (toId) => get().nodes[toId]?.parentId ?? undefined,
 	createSystemMessage: (text) => {
