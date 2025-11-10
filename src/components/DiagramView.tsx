@@ -7,7 +7,7 @@ import {
 	type Node,
 	ReactFlow,
 } from "@xyflow/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
@@ -184,6 +184,7 @@ const DiagramView = ({
 	const [contextMenuNodeId, setContextMenuNodeId] = useState<string | null>(
 		null,
 	);
+	const pendingNodeRemovalsRef = useRef<Set<string>>(new Set());
 
 	useEffect(() => {
 		const children = Object.values(treeNodes).map((node) => ({
@@ -379,7 +380,8 @@ const DiagramView = ({
 						}}
 						onEdgesDelete={(edgesDeleted) => {
 							edgesDeleted.forEach((edge) => {
-								if (edge.target) {
+								const pendingRemovals = pendingNodeRemovalsRef.current;
+								if (edge.target && !pendingRemovals.has(edge.target)) {
 									splitBranch(edge.target);
 								}
 							});
@@ -388,6 +390,13 @@ const DiagramView = ({
 							nodesDeleted.forEach((node) => {
 								removeNode(node.id);
 							});
+							pendingNodeRemovalsRef.current.clear();
+						}}
+						onBeforeDelete={({ nodes }) => {
+							pendingNodeRemovalsRef.current = new Set(
+								nodes.map((node) => node.id),
+							);
+							return true;
 						}}
 					>
 						<Background />
