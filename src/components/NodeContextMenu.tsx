@@ -11,7 +11,7 @@ interface NodeContextMenuProps {
 }
 
 const menuItemClassName =
-	"flex cursor-default select-none items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-slate-800 outline-none transition-colors data-[highlighted]:bg-slate-900 data-[highlighted]:text-slate-50";
+	"flex cursor-default select-none items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none transition-colors duration-75 data-[highlighted]:bg-slate-900 data-[highlighted]:text-slate-50";
 
 const NodeContextMenu = ({
 	targetId,
@@ -45,7 +45,7 @@ const NodeContextMenu = ({
 			</ContextMenu.Trigger>
 			<ContextMenu.Portal>
 				<ContextMenu.Positioner className="outline-none">
-					<ContextMenu.Popup className="origin-[var(--transform-origin)] min-w-[14rem] rounded-lg border border-slate-200 bg-white/95 p-1 shadow-xl shadow-slate-200/80 backdrop-blur transition-[opacity,transform] data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 dark:border-slate-700 dark:bg-slate-800/95 dark:text-slate-100">
+					<ContextMenu.Popup className="origin-[var(--transform-origin)] min-w-[8rem] rounded-xl border border-slate-300 bg-white p-0.5 shadow-[0_12px_40px_rgba(15,23,42,0.25)] transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:shadow-[0_18px_45px_rgba(0,0,0,0.55)]">
 						<ContextMenu.Item
 							className={menuItemClassName}
 							onClick={invoke(onBranch)}
