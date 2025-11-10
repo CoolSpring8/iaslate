@@ -28,6 +28,40 @@ const modelsKey = "iaslate_models";
 
 const defaultSystemPrompt = "You are a helpful assistant.";
 
+const extractTextDelta = (input: unknown): string => {
+	if (!input) {
+		return "";
+	}
+	if (typeof input === "string") {
+		return input;
+	}
+	if (Array.isArray(input)) {
+		return input
+			.map((part) => {
+				if (typeof part === "string") {
+					return part;
+				}
+				if (typeof part === "object" && part !== null) {
+					if (
+						"text" in part &&
+						typeof (part as { text?: unknown }).text === "string"
+					) {
+						return (part as { text?: string }).text ?? "";
+					}
+					if (
+						"content" in part &&
+						typeof (part as { content?: unknown }).content === "string"
+					) {
+						return (part as { content?: string }).content ?? "";
+					}
+				}
+				return "";
+			})
+			.join("");
+	}
+	return "";
+};
+
 const App = () => {
 	const [baseURL, setBaseURL] = useState("");
 	const [apiKey, setAPIKey] = useState("");
@@ -336,11 +370,19 @@ const App = () => {
 			);
 			setIsGenerating(true);
 			for await (const chunk of stream) {
-				const delta = chunk.choices[0]?.delta?.content ?? "";
-				if (!delta) {
+				const delta = chunk.choices[0]?.delta;
+				const contentDelta = extractTextDelta(delta?.content);
+				const reasoningDelta = extractTextDelta(
+					(delta as { reasoning_content?: unknown } | undefined)
+						?.reasoning_content,
+				);
+				if (!contentDelta && !reasoningDelta) {
 					continue;
 				}
-				appendToNode(assistantId, delta);
+				appendToNode(assistantId, {
+					content: contentDelta,
+					reasoning: reasoningDelta,
+				});
 			}
 			setNodeStatus(assistantId, "final");
 		} catch (error) {

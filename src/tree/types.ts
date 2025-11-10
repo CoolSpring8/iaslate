@@ -6,6 +6,7 @@ export interface TreeNode {
 	id: NodeID;
 	role: "system" | "user" | "assistant" | "tool";
 	text: string;
+	reasoningContent?: string;
 	createdAt: number;
 	status?: "draft" | "streaming" | "final" | "error";
 	parentId: NodeID | null;

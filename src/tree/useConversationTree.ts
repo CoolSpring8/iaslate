@@ -24,7 +24,10 @@ interface TreeState extends ConversationTree {
 	activeTail: () => NodeID | undefined;
 	createUserAfter: (parentId: NodeID | undefined, text: string) => NodeID;
 	createAssistantAfter: (parentId: NodeID) => NodeID;
-	appendToNode: (nodeId: NodeID, delta: string) => void;
+	appendToNode: (
+		nodeId: NodeID,
+		delta: { content?: string; reasoning?: string },
+	) => void;
 	setNodeText: (nodeId: NodeID, text: string) => void;
 	setNodeStatus: (
 		nodeId: NodeID,
@@ -139,6 +142,7 @@ const isAncestor = (nodes: NodeMap, ancestorId: NodeID, nodeId: NodeID) => {
 const toMessage = (node: TreeNode): Message => ({
 	role: node.role,
 	content: node.text,
+	reasoning_content: node.reasoningContent,
 	_metadata: { uuid: node.id },
 });
 
@@ -183,6 +187,7 @@ export const useConversationTree = create<TreeState>((set, get) => ({
 					id,
 					role,
 					text: message.content,
+					reasoningContent: message.reasoning_content,
 					createdAt: existing?.createdAt ?? Date.now(),
 					status: existing?.status,
 					parentId,
@@ -284,6 +289,7 @@ export const useConversationTree = create<TreeState>((set, get) => ({
 					id: newId,
 					role: "assistant",
 					text: "",
+					reasoningContent: undefined,
 					createdAt: Date.now(),
 					status: "draft",
 					parentId,
@@ -299,11 +305,20 @@ export const useConversationTree = create<TreeState>((set, get) => ({
 			if (!node) {
 				return state;
 			}
+			const nextContent =
+				typeof delta.content === "string"
+					? `${node.text}${delta.content}`
+					: node.text;
+			const nextReasoning =
+				typeof delta.reasoning === "string"
+					? `${node.reasoningContent ?? ""}${delta.reasoning}`
+					: node.reasoningContent;
 			const nodes: NodeMap = {
 				...state.nodes,
 				[nodeId]: {
 					...node,
-					text: `${node.text}${delta}`,
+					text: nextContent,
+					reasoningContent: nextReasoning,
 				},
 			};
 			return { nodes } satisfies Partial<TreeState>;
@@ -366,25 +381,26 @@ export const useConversationTree = create<TreeState>((set, get) => ({
 			};
 			return withDerivedTree(nodes);
 		}),
-		cloneNode: (sourceId) => {
-			const source = get().nodes[sourceId];
-			if (!source) {
-				return undefined;
-			}
+	cloneNode: (sourceId) => {
+		const source = get().nodes[sourceId];
+		if (!source) {
+			return undefined;
+		}
 		const newId = uuidv4();
 		set((state) => {
 			const nodes: NodeMap = {
 				...state.nodes,
-					[newId]: {
-						id: newId,
-						role: source.role,
-						text: source.text,
-						createdAt: Date.now(),
-						parentId: source.parentId ?? null,
-					},
-				};
-				return withDerivedTree(nodes);
-			});
+				[newId]: {
+					id: newId,
+					role: source.role,
+					text: source.text,
+					reasoningContent: source.reasoningContent,
+					createdAt: Date.now(),
+					parentId: source.parentId ?? null,
+				},
+			};
+			return withDerivedTree(nodes);
+		});
 		return newId;
 	},
 	removeNode: (id) =>
@@ -454,6 +470,7 @@ export const useConversationTree = create<TreeState>((set, get) => ({
 				id,
 				role: coerceRole(node.role),
 				text: node.text ?? "",
+				reasoningContent: node.reasoningContent,
 				createdAt,
 				status: node.status,
 				parentId,
