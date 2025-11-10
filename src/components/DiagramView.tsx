@@ -392,7 +392,7 @@ const DiagramView = ({
 							});
 							pendingNodeRemovalsRef.current.clear();
 						}}
-						onBeforeDelete={({ nodes }) => {
+						onBeforeDelete={async ({ nodes }) => {
 							pendingNodeRemovalsRef.current = new Set(
 								nodes.map((node) => node.id),
 							);
