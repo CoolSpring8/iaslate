@@ -13,7 +13,6 @@ interface MessageItemProps {
 	onEdit: () => void;
 	onDelete: () => void;
 	onDetach: () => void;
-	onBranch: () => void;
 }
 
 const MessageItem = ({
@@ -24,7 +23,6 @@ const MessageItem = ({
 	onEdit,
 	onDelete,
 	onDetach,
-	onBranch,
 }: MessageItemProps) => {
 	const [isHovered, setIsHovered] = useState(false);
 	const [hasBeenClicked, setHasBeenClicked] = useState(false);
@@ -66,14 +64,24 @@ const MessageItem = ({
 							<UnstyledButton
 								className="i-lucide-copy text-slate-400 hover:text-slate-600 transition"
 								onClick={handleCopy}
+								title="Copy message content"
 							/>
 							<UnstyledButton
 								className="i-lucide-edit text-slate-400 hover:text-slate-600 transition"
 								onClick={onEdit}
+								title="Edit message"
+							/>
+							<UnstyledButton
+								className="i-lucide-unlink text-slate-400 hover:text-slate-600 transition"
+								onClick={onDetach}
+								title="Move cursor to parent"
 							/>
 							<Popover width={200} position="bottom" withArrow>
 								<Popover.Target>
-									<UnstyledButton className="i-lucide-trash text-slate-400 hover:text-slate-600 transition" />
+									<UnstyledButton
+										className="i-lucide-trash text-slate-400 hover:text-slate-600 transition"
+										title="Delete message"
+									/>
 								</Popover.Target>
 								<Popover.Dropdown>
 									<div className="flex flex-col">
@@ -87,15 +95,6 @@ const MessageItem = ({
 									</div>
 								</Popover.Dropdown>
 							</Popover>
-							<UnstyledButton
-								className="i-lucide-unlink text-slate-400 hover:text-slate-600 transition"
-								onClick={onDetach}
-							/>
-							<UnstyledButton
-								className="i-lucide-git-branch-plus text-slate-400 hover:text-slate-600 transition"
-								title="Branch from here"
-								onClick={onBranch}
-							/>
 						</>
 					)}
 				</div>

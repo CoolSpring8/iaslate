@@ -1,7 +1,6 @@
 import {
 	Background,
 	type Connection,
-	Controls,
 	type Edge,
 	MiniMap,
 	type Node,
@@ -17,7 +16,7 @@ import NodeContextMenu from "./NodeContextMenu";
 
 interface DiagramViewProps {
 	onNodeDoubleClick?: (nodeId: string) => void;
-	onBranchFromNode?: (nodeId: string) => void;
+	onSetActiveNode?: (nodeId: string) => void;
 	onDuplicateFromNode?: (nodeId: string) => void;
 }
 
@@ -41,7 +40,7 @@ const nodeStyleBase = {
 
 const DiagramView = ({
 	onNodeDoubleClick,
-	onBranchFromNode,
+	onSetActiveNode,
 	onDuplicateFromNode,
 }: DiagramViewProps) => {
 	const {
@@ -232,7 +231,7 @@ const DiagramView = ({
 						}
 
 						const label = (
-							<div className="flex items-start justify-between gap-2">
+							<div className="flex items-start gap-2">
 								<div className="min-w-0">
 									<p className="text-xs font-mono uppercase text-slate-500">
 										{dataNode.role}
@@ -240,26 +239,6 @@ const DiagramView = ({
 									<p className="mt-1 text-sm font-medium leading-snug text-slate-800 line-clamp-3">
 										{dataNode.text}
 									</p>
-								</div>
-								<div className="flex flex-none gap-1 opacity-70 hover:opacity-100">
-									<button
-										type="button"
-										className="i-lucide-git-branch-plus w-4 h-4"
-										title="Branch here"
-										onClick={(event) => {
-											event.stopPropagation();
-											onBranchFromNode?.(child.id);
-										}}
-									/>
-									<button
-										type="button"
-										className="i-lucide-copy w-4 h-4"
-										title="Duplicate here"
-										onClick={(event) => {
-											event.stopPropagation();
-											onDuplicateFromNode?.(child.id);
-										}}
-									/>
 								</div>
 							</div>
 						);
@@ -342,7 +321,7 @@ const DiagramView = ({
 					onClose={() => {
 						setContextMenuNodeId(null);
 					}}
-					onBranch={onBranchFromNode}
+					onSetActive={onSetActiveNode}
 					onDuplicate={onDuplicateFromNode}
 					onRemove={(nodeId) => {
 						removeNode(nodeId);
@@ -401,7 +380,6 @@ const DiagramView = ({
 					>
 						<Background />
 						<MiniMap />
-						<Controls />
 					</ReactFlow>
 				</NodeContextMenu>
 			) : (

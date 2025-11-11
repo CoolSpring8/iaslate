@@ -37,6 +37,10 @@ interface TreeState extends ConversationTree {
 	canReparent: (parentId: NodeID, childId: NodeID) => boolean;
 	reparentNode: (nodeId: NodeID, nextParentId: NodeID) => void;
 	cloneNode: (sourceId: NodeID) => NodeID | undefined;
+	replaceNodeWithEditedClone: (
+		nodeId: NodeID,
+		updates: { text?: string; reasoningContent?: string },
+	) => NodeID | undefined;
 	removeNode: (id: NodeID) => void;
 	reset: () => void;
 	exportSnapshot: () => ConversationSnapshot;
@@ -397,11 +401,46 @@ export const useConversationTree = create<TreeState>((set, get) => ({
 					reasoningContent: source.reasoningContent,
 					createdAt: Date.now(),
 					parentId: source.parentId ?? null,
+					status: source.status,
 				},
 			};
 			return withDerivedTree(nodes);
 		});
 		return newId;
+	},
+	replaceNodeWithEditedClone: (nodeId, updates) => {
+		let replacementId: NodeID | undefined;
+		set((state) => {
+			const target = state.nodes[nodeId];
+			if (!target) {
+				return state;
+			}
+			const nodes: NodeMap = { ...state.nodes };
+			const newId = uuidv4();
+			replacementId = newId;
+			nodes[newId] = {
+				...target,
+				id: newId,
+				text: updates.text ?? target.text,
+				reasoningContent: updates.reasoningContent ?? target.reasoningContent,
+				parentId: target.parentId ?? null,
+				createdAt: Date.now(),
+				status: "final",
+			};
+			for (const child of Object.values(nodes)) {
+				if (child.parentId === nodeId) {
+					nodes[child.id] = {
+						...child,
+						parentId: newId,
+					};
+				}
+			}
+			return withDerivedTree(nodes, {
+				activeTargetId:
+					state.activeTargetId === nodeId ? newId : state.activeTargetId,
+			});
+		});
+		return replacementId;
 	},
 	removeNode: (id) =>
 		set((state) => {
