@@ -1,16 +1,27 @@
 import { SegmentedControl, Select, UnstyledButton } from "@mantine/core";
+import type { AppView } from "../types";
 
 interface HeaderProps {
 	models: Array<{ id: string; name?: string | null }>;
 	activeModel: string | null;
 	onModelChange: (value: string | null) => void;
-	view: "chat" | "diagram";
-	onViewChange: (value: "chat" | "diagram") => void;
+	view: AppView;
+	onViewChange: (value: AppView) => void;
 	onClear: () => void;
 	onImport: () => void;
 	onExport: () => void;
 	onOpenSettings: () => void;
 }
+
+const viewOptions: Array<{
+	label: string;
+	value: AppView;
+	icon: string;
+}> = [
+	{ label: "Chat", value: "chat", icon: "i-lucide-message-square" },
+	{ label: "Diagram", value: "diagram", icon: "i-lucide-git-branch" },
+	{ label: "Text", value: "text", icon: "i-lucide-align-left" },
+];
 
 const Header = ({
 	models,
@@ -42,11 +53,29 @@ const Header = ({
 			<SegmentedControl
 				size="sm"
 				value={view}
-				onChange={(value) => onViewChange(value as "chat" | "diagram")}
-				data={[
-					{ label: "Chat", value: "chat" },
-					{ label: "Diagram", value: "diagram" },
-				]}
+				onChange={(value) => onViewChange(value as AppView)}
+				data={viewOptions.map((option) => ({
+					value: option.value,
+					label: (
+						<span className="flex items-center gap-2 text-sm font-medium">
+							<span
+								className={`w-4 h-4 ${option.icon}`}
+								aria-hidden="true"
+							/>
+							{option.label}
+						</span>
+					),
+				}))}
+				withItemsBorders={false}
+				radius="xl"
+				classNames={{
+					root: "rounded-full bg-slate-100/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 p-1",
+					indicator:
+						"rounded-full bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm",
+					control:
+						"text-slate-500 dark:text-slate-400 data-[active=true]:text-slate-900 dark:data-[active=true]:text-white transition-colors",
+					label: "px-3 py-1.5",
+				}}
 				aria-label="View switch"
 			/>
 		</div>
