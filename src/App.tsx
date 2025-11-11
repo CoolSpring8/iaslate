@@ -127,9 +127,9 @@ const App = () => {
 		createUserAfter,
 		createAssistantAfter,
 		appendToNode,
-		setNodeText,
 		setNodeStatus,
 		cloneNode,
+		replaceNodeWithEditedClone,
 		predecessorOf,
 		compilePathTo,
 		activeTail,
@@ -148,9 +148,9 @@ const App = () => {
 			createUserAfter: state.createUserAfter,
 			createAssistantAfter: state.createAssistantAfter,
 			appendToNode: state.appendToNode,
-			setNodeText: state.setNodeText,
 			setNodeStatus: state.setNodeStatus,
 			cloneNode: state.cloneNode,
+			replaceNodeWithEditedClone: state.replaceNodeWithEditedClone,
 			predecessorOf: state.predecessorOf,
 			compilePathTo: state.compilePathTo,
 			activeTail: state.activeTail,
@@ -211,6 +211,9 @@ const App = () => {
 	};
 
 	const resetComposerState = () => {
+		if (editingNodeId) {
+			setNodeStatus(editingNodeId, "final");
+		}
 		setEditingNodeId(undefined);
 		setPrompt("");
 	};
@@ -273,27 +276,17 @@ const App = () => {
 			return;
 		}
 		setActiveTarget(targetId);
-		setEditingNodeId(undefined);
-		setPrompt("");
+		resetComposerState();
 		setIsGenerating(false);
 	};
 
 	const handleDuplicateFromNode = (nodeId: string) => {
-		const newId = cloneNode(nodeId);
-		if (!newId) {
-			return;
-		}
-		handleActivateThread(newId);
+		void cloneNode(nodeId);
 	};
 
 	const handleEditMessage = (nodeId: string, content: string) => {
-		const clonedId = cloneNode(nodeId);
-		if (!clonedId) {
-			return;
-		}
-		setNodeStatus(clonedId, "draft");
-		setActiveTarget(clonedId);
-		setEditingNodeId(clonedId);
+		setNodeStatus(nodeId, "draft");
+		setEditingNodeId(nodeId);
 		setPrompt(content);
 	};
 
@@ -309,8 +302,7 @@ const App = () => {
 		}
 		removeNodeFromTree(nodeId);
 		if (editingNodeId === nodeId) {
-			setEditingNodeId(undefined);
-			setPrompt("");
+			resetComposerState();
 		}
 		const tailId = activeTail();
 		if (tailId) {
@@ -329,8 +321,7 @@ const App = () => {
 			return;
 		}
 		if (editingNodeId === nodeId) {
-			setEditingNodeId(undefined);
-			setPrompt("");
+			resetComposerState();
 		}
 		setActiveTarget(prevId);
 	};
@@ -408,10 +399,16 @@ const App = () => {
 		if (!editingNodeId) {
 			return;
 		}
-		setNodeText(editingNodeId, prompt);
-		setNodeStatus(editingNodeId, "final");
-		setEditingNodeId(undefined);
-		setPrompt("");
+		const replacementId = replaceNodeWithEditedClone(editingNodeId, {
+			text: prompt,
+		});
+		if (!replacementId) {
+			return;
+		}
+		if (activeTargetId === editingNodeId) {
+			setActiveTarget(replacementId);
+		}
+		resetComposerState();
 	};
 
 	const handleSubmit = () => {
@@ -577,8 +574,7 @@ const App = () => {
 								<UnstyledButton
 									className="i-lucide-x ml-auto flex-none"
 									onClick={() => {
-										setEditingNodeId(undefined);
-										setPrompt("");
+										resetComposerState();
 									}}
 								/>
 							</div>
