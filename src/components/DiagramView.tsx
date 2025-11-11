@@ -1,11 +1,22 @@
 import {
 	Background,
+	type Connection,
 	type Edge,
+	Handle,
 	MiniMap,
 	type Node,
+	type NodeProps,
+	Position,
 	ReactFlow,
 } from "@xyflow/react";
-import { useEffect, useMemo, useState } from "react";
+import {
+	type CSSProperties,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
@@ -28,12 +39,42 @@ const boxSize = {
 const columnGap = 64;
 const rowGap = 80;
 
-const nodeStyleBase = {
+type DiagramNodeData = {
+	label: ReactNode;
+	style: CSSProperties;
+};
+
+const nodeStyleBase: CSSProperties = {
 	border: "1px solid #e2e8f0",
 	borderRadius: 8,
 	padding: 8,
 	background: "#fff",
 	width: boxSize.width,
+	boxSizing: "border-box",
+};
+
+const DiagramNode = ({ data }: NodeProps<DiagramNodeData>) => {
+	return (
+		<div className="relative" style={data.style}>
+			<Handle
+				type="target"
+				position={Position.Top}
+				className="h-3 w-3 border border-white bg-slate-400 shadow-sm shadow-slate-400/40"
+				style={{ borderRadius: "9999px" }}
+			/>
+			<div>{data.label}</div>
+			<Handle
+				type="source"
+				position={Position.Bottom}
+				className="h-3 w-3 border border-white bg-slate-400 shadow-sm shadow-slate-400/40"
+				style={{ borderRadius: "9999px" }}
+			/>
+		</div>
+	);
+};
+
+const diagramNodeTypes = {
+	diagram: DiagramNode,
 };
 
 const DiagramView = ({
@@ -45,12 +86,20 @@ const DiagramView = ({
 		edges: treeEdges,
 		activeTargetId,
 		compileActive,
+		canReparent,
+		reparentNode,
+		cloneNode,
+		removeNode,
 	} = useConversationTree(
 		useShallow((state) => ({
 			nodes: state.nodes,
 			edges: state.edges,
 			activeTargetId: state.activeTargetId,
 			compileActive: state.compileActive,
+			canReparent: state.canReparent,
+			reparentNode: state.reparentNode,
+			cloneNode: state.cloneNode,
+			removeNode: state.removeNode,
 		})),
 	);
 
@@ -167,7 +216,7 @@ const DiagramView = ({
 		return depthMap;
 	}, [treeNodes]);
 
-	const [layoutNodes, setLayoutNodes] = useState<Node[]>([]);
+	const [layoutNodes, setLayoutNodes] = useState<Node<DiagramNodeData>[]>([]);
 	const [layoutEdges, setLayoutEdges] = useState<Edge[]>([]);
 	const [contextMenuNodeId, setContextMenuNodeId] = useState<string | null>(
 		null,
@@ -208,50 +257,54 @@ const DiagramView = ({
 					if (cancelled) {
 						return;
 					}
-					const nodes: Node[] = (result.children ?? []).map((child) => {
-						const dataNode = treeNodes[child.id];
-						if (!dataNode) {
+					const nodes: Node<DiagramNodeData>[] = (result.children ?? []).map(
+						(child) => {
+							const dataNode = treeNodes[child.id];
+							if (!dataNode) {
+								return {
+									id: child.id,
+									type: "diagram",
+									position: { x: child.x ?? 0, y: child.y ?? 0 },
+									data: { label: child.id, style: { ...nodeStyleBase } },
+								} satisfies Node<DiagramNodeData>;
+							}
+
+							const label = (
+								<div className="flex items-start gap-2">
+									<div className="min-w-0">
+										<p className="text-xs font-mono uppercase text-slate-500">
+											{dataNode.role}
+										</p>
+										<p className="mt-1 text-sm font-medium leading-snug text-slate-800 line-clamp-3">
+											{dataNode.text}
+										</p>
+									</div>
+								</div>
+							);
+
+							const isActive = activePathIds.nodes.has(child.id);
+							const style = {
+								...nodeStyleBase,
+								border: isActive ? "2px solid #2563eb" : "1px solid #e2e8f0",
+								opacity: isActive ? 1 : 0.7,
+							};
+
 							return {
 								id: child.id,
-								position: { x: child.x ?? 0, y: child.y ?? 0 },
-								data: { label: child.id },
-							} satisfies Node;
-						}
-
-						const label = (
-							<div className="flex items-start gap-2">
-								<div className="min-w-0">
-									<p className="text-xs font-mono uppercase text-slate-500">
-										{dataNode.role}
-									</p>
-									<p className="mt-1 text-sm font-medium leading-snug text-slate-800 line-clamp-3">
-										{dataNode.text}
-									</p>
-								</div>
-							</div>
-						);
-
-						const isActive = activePathIds.nodes.has(child.id);
-						const style = {
-							...nodeStyleBase,
-							border: isActive ? "2px solid #2563eb" : "1px solid #e2e8f0",
-							opacity: isActive ? 1 : 0.7,
-						};
-
-						return {
-							id: child.id,
-							position: {
-								x:
-									(laneAssignments.get(child.id) ?? laneAssignments.size) *
-									(boxSize.width + columnGap),
-								y:
-									child.y ??
-									(depthByNode.get(child.id) ?? 0) * (boxSize.height + rowGap),
-							},
-							data: { label },
-							style,
-						} satisfies Node;
-					});
+								type: "diagram",
+								position: {
+									x:
+										(laneAssignments.get(child.id) ?? laneAssignments.size) *
+										(boxSize.width + columnGap),
+									y:
+										child.y ??
+										(depthByNode.get(child.id) ?? 0) *
+											(boxSize.height + rowGap),
+								},
+								data: { label, style },
+							} satisfies Node<DiagramNodeData>;
+						},
+					);
 
 					const edgesStyled: Edge[] = (result.edges ?? []).flatMap((edge) => {
 						const source = edge.sources?.[0];
@@ -298,6 +351,57 @@ const DiagramView = ({
 		depthByNode,
 	]);
 
+	const handleDuplicateNode = useCallback(
+		(nodeId: string) => {
+			const newId = cloneNode(nodeId);
+			if (!newId) {
+				return;
+			}
+			onSetActiveNode?.(newId);
+		},
+		[cloneNode, onSetActiveNode],
+	);
+
+	const handleRemoveNode = useCallback(
+		(nodeId: string) => {
+			removeNode(nodeId);
+		},
+		[removeNode],
+	);
+
+	const handleIsValidConnection = useCallback(
+		(connection: Connection) => {
+			const sourceId = connection.source;
+			const targetId = connection.target;
+			if (!sourceId || !targetId) {
+				return false;
+			}
+			if (!treeNodes[sourceId] || !treeNodes[targetId]) {
+				return false;
+			}
+			if (treeNodes[targetId].parentId === sourceId) {
+				return false;
+			}
+			return canReparent(sourceId, targetId);
+		},
+		[treeNodes, canReparent],
+	);
+
+	const handleConnect = useCallback(
+		(connection: Connection) => {
+			if (!handleIsValidConnection(connection)) {
+				return;
+			}
+			const sourceId = connection.source;
+			const targetId = connection.target;
+			if (!sourceId || !targetId) {
+				return;
+			}
+			reparentNode(targetId, sourceId);
+		},
+		[handleIsValidConnection, reparentNode],
+	);
+
 	const hasGraphData =
 		layoutNodes.length > 0 || Object.keys(treeNodes).length > 0;
 
@@ -310,13 +414,19 @@ const DiagramView = ({
 						setContextMenuNodeId(null);
 					}}
 					onSetActive={onSetActiveNode}
+					onDuplicate={handleDuplicateNode}
+					onRemove={handleRemoveNode}
 				>
 					<ReactFlow
 						nodes={layoutNodes}
 						edges={layoutEdges}
+						nodeTypes={diagramNodeTypes}
 						fitView
 						nodesDraggable={false}
+						nodesConnectable
 						zoomOnDoubleClick={false}
+						onConnect={handleConnect}
+						isValidConnection={handleIsValidConnection}
 						onPaneClick={() => {
 							setContextMenuNodeId(null);
 						}}
