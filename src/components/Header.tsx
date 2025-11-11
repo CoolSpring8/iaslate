@@ -4,8 +4,8 @@ interface HeaderProps {
 	models: Array<{ id: string; name?: string | null }>;
 	activeModel: string | null;
 	onModelChange: (value: string | null) => void;
-	view: "chat" | "diagram";
-	onViewChange: (value: "chat" | "diagram") => void;
+	view: "chat" | "diagram" | "text";
+	onViewChange: (value: "chat" | "diagram" | "text") => void;
 	onClear: () => void;
 	onImport: () => void;
 	onExport: () => void;
@@ -42,10 +42,11 @@ const Header = ({
 			<SegmentedControl
 				size="sm"
 				value={view}
-				onChange={(value) => onViewChange(value as "chat" | "diagram")}
+				onChange={(value) => onViewChange(value as "chat" | "diagram" | "text")}
 				data={[
 					{ label: "Chat", value: "chat" },
 					{ label: "Diagram", value: "diagram" },
+					{ label: "Text", value: "text" },
 				]}
 				aria-label="View switch"
 			/>

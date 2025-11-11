@@ -19,6 +19,7 @@ import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import MessageItem from "./components/MessageItem";
 import SettingsModal from "./components/SettingsModal";
+import TextCompletionView from "./components/TextCompletionView";
 import type { ConversationSnapshot } from "./tree/types";
 import { useConversationTree } from "./tree/useConversationTree";
 
@@ -103,19 +104,24 @@ const App = () => {
 				const response = await client.current.models.list();
 				setModels(response.data);
 				await set(modelsKey, response.data);
-				setActiveModel(response.data[0].id);
+				const nextModelId = response.data.at(0)?.id;
+				if (nextModelId) {
+					setActiveModel(nextModelId);
+				}
 			}
 		})();
 	}, []);
 
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [prompt, setPrompt] = useImmer("");
+	const [textContent, setTextContent] = useImmer("");
+	const [isTextGenerating, setIsTextGenerating] = useState(false);
 	const [isSettingsOpen, { open: onSettingsOpen, close: onSettingsClose }] =
 		useDisclosure();
 	const [editingNodeId, setEditingNodeId] = useState<string | undefined>(
 		undefined,
 	);
-	const [view, setView] = useState<"chat" | "diagram">("chat");
+	const [view, setView] = useState<"chat" | "diagram" | "text">("chat");
 	const isComposing = useRef(false);
 	const {
 		nodes: treeNodes,
@@ -176,6 +182,8 @@ const App = () => {
 			const hasSessionState =
 				isGenerating ||
 				prompt.trim().length > 0 ||
+				isTextGenerating ||
+				textContent.trim().length > 0 ||
 				typeof editingNodeId !== "undefined" ||
 				chatMessages.length > 1;
 			if (!hasSessionState) {
@@ -190,7 +198,14 @@ const App = () => {
 		return () => {
 			window.removeEventListener("beforeunload", handleBeforeUnload);
 		};
-	}, [isGenerating, prompt, editingNodeId, chatMessages.length]);
+	}, [
+		isGenerating,
+		prompt,
+		isTextGenerating,
+		textContent,
+		editingNodeId,
+		chatMessages.length,
+	]);
 
 	useEffect(() => {
 		if (isTreeEmpty() && chatMessages.length === 0) {
@@ -199,9 +214,17 @@ const App = () => {
 		}
 	}, [isTreeEmpty, createSystemMessage, setActiveTarget, chatMessages.length]);
 
+	useEffect(
+		() => () => {
+			textAbortControllerRef.current?.abort();
+		},
+		[],
+	);
+
 	const streamControllersRef = useRef<Record<string, AbortController>>({});
 	const latestAssistantIdRef = useRef<string | undefined>(undefined);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
+	const textAbortControllerRef = useRef<AbortController | null>(null);
 
 	const abortActiveStreams = () => {
 		Object.values(streamControllersRef.current).forEach((controller) => {
@@ -332,6 +355,58 @@ const App = () => {
 		handleActivateThread(prevId);
 	};
 
+	const handleTextPredict = async () => {
+		if (isTextGenerating) {
+			return;
+		}
+		if (!activeModel) {
+			toast.error("Select a model before predicting");
+			return;
+		}
+		const abortController = new AbortController();
+		textAbortControllerRef.current = abortController;
+		setIsTextGenerating(true);
+		try {
+			const stream = await client.current.responses.create(
+				{
+					model: activeModel,
+					input: textContent.length > 0 ? textContent : " ",
+					stream: true,
+					temperature: 0.3,
+				},
+				{ signal: abortController.signal },
+			);
+			for await (const event of stream) {
+				if (event.type === "response.output_text.delta") {
+					const delta = event.delta;
+					if (delta) {
+						setTextContent((draft) => draft + delta);
+					}
+				}
+			}
+		} catch (error) {
+			if (abortController.signal.aborted) {
+				return;
+			}
+			console.error(error);
+			toast.error("Failed to generate completion");
+		} finally {
+			setIsTextGenerating(false);
+			if (textAbortControllerRef.current === abortController) {
+				textAbortControllerRef.current = null;
+			}
+		}
+	};
+
+	const handleTextCancel = () => {
+		const controller = textAbortControllerRef.current;
+		if (!controller) {
+			return;
+		}
+		controller.abort();
+		textAbortControllerRef.current = null;
+	};
+
 	const handleSend = async () => {
 		if (!activeModel) {
 			toast.error("Select a model before sending");
@@ -454,7 +529,10 @@ const App = () => {
 		setModels(response.data);
 		await set(modelsKey, response.data);
 		if (!activeModel) {
-			setActiveModel(response.data[0].id);
+			const nextModelId = response.data.at(0)?.id;
+			if (nextModelId) {
+				setActiveModel(nextModelId);
+			}
 		}
 	};
 
@@ -583,7 +661,7 @@ const App = () => {
 						)}
 					</div>
 				</>
-			) : (
+			) : view === "diagram" ? (
 				<div className="flex-1 overflow-hidden px-2 py-2">
 					<DiagramView
 						onNodeDoubleClick={handleActivateThread}
@@ -591,6 +669,16 @@ const App = () => {
 						onDuplicateFromNode={handleDuplicateFromNode}
 					/>
 				</div>
+			) : (
+				<TextCompletionView
+					value={textContent}
+					isGenerating={isTextGenerating}
+					onChange={(value) => {
+						setTextContent(value);
+					}}
+					onPredict={handleTextPredict}
+					onCancel={handleTextCancel}
+				/>
 			)}
 			<SettingsModal
 				open={isSettingsOpen}
