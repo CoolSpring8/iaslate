@@ -1,5 +1,4 @@
-import { Textarea } from "@mantine/core";
-import { twJoin } from "tailwind-merge";
+import { Button, Textarea } from "@mantine/core";
 
 interface TextCompletionViewProps {
 	value: string;
@@ -16,42 +15,43 @@ const TextCompletionView = ({
 	onPredict,
 	onCancel,
 }: TextCompletionViewProps) => (
-	<div className="flex flex-1 flex-col gap-4 px-4 py-2">
-		<Textarea
-			className="flex-1"
-			minRows={8}
-			autosize
-			value={value}
-			onChange={(event) => {
-				onChange(event.target.value);
-			}}
-			placeholder="Provide some starter text and let the model continue it..."
-		/>
-		<div className="flex gap-2">
-			<button
-				type="button"
-				className={twJoin(
-					"rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors",
-					"hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2",
-					isGenerating ? "cursor-not-allowed opacity-60" : "",
-				)}
-				onClick={onPredict}
-				disabled={isGenerating}
+	<div className="flex flex-1 flex-col gap-6 px-6 py-4">
+		<div className="flex-1 rounded-2xl bg-slate-50/90 p-4 backdrop-blur dark:bg-slate-900/40">
+			<Textarea
+				className="h-full"
+				minRows={12}
+				autosize
+				size="lg"
+				value={value}
+				onChange={(event) => {
+					onChange(event.target.value);
+				}}
+					placeholder="Provide a seed paragraph and let the model continue it…"
+					classNames={{
+						input: "h-full min-h-[18rem] resize-none border-none bg-transparent text-lg leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none dark:text-slate-100",
+					}}
+				/>
+		</div>
+		<div className="flex justify-end">
+			<Button
+				radius="xl"
+				size="md"
+				variant={isGenerating ? "light" : "filled"}
+				color={isGenerating ? "red" : "blue"}
+				onClick={isGenerating ? onCancel : onPredict}
+				leftSection={
+					<span
+						className={
+							isGenerating
+								? "w-4 h-4 i-lucide-loader-2 animate-spin"
+								: "w-4 h-4 i-lucide-wand-2"
+						}
+						aria-hidden="true"
+					/>
+				}
 			>
-				Predict
-			</button>
-			<button
-				type="button"
-				className={twJoin(
-					"rounded border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 transition-colors",
-					"hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2",
-					!isGenerating ? "cursor-not-allowed opacity-60" : "",
-				)}
-				onClick={onCancel}
-				disabled={!isGenerating}
-			>
-				Cancel
-			</button>
+				{isGenerating ? "Stop" : "Predict"}
+			</Button>
 		</div>
 	</div>
 );
