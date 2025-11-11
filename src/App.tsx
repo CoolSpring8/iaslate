@@ -278,6 +278,14 @@ const App = () => {
 		setIsGenerating(false);
 	};
 
+	const handleDuplicateFromNode = (nodeId: string) => {
+		const newId = cloneNode(nodeId);
+		if (!newId) {
+			return;
+		}
+		handleActivateThread(newId);
+	};
+
 	const handleEditMessage = (nodeId: string, content: string) => {
 		const clonedId = cloneNode(nodeId);
 		if (!clonedId) {
@@ -582,6 +590,7 @@ const App = () => {
 					<DiagramView
 						onNodeDoubleClick={handleActivateThread}
 						onSetActiveNode={handleActivateThread}
+						onDuplicateFromNode={handleDuplicateFromNode}
 					/>
 				</div>
 			)}
