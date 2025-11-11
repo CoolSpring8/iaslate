@@ -4,9 +4,7 @@ import type { ReactNode } from "react";
 interface NodeContextMenuProps {
 	targetId: string | null;
 	onClose: () => void;
-	onBranch?: (nodeId: string) => void;
-	onDuplicate?: (nodeId: string) => void;
-	onRemove?: (nodeId: string) => void;
+	onSetActive?: (nodeId: string) => void;
 	children: ReactNode;
 }
 
@@ -16,9 +14,7 @@ const menuItemClassName =
 const NodeContextMenu = ({
 	targetId,
 	onClose,
-	onBranch,
-	onDuplicate,
-	onRemove,
+	onSetActive,
 	children,
 }: NodeContextMenuProps) => {
 	const open = Boolean(targetId);
@@ -48,22 +44,9 @@ const NodeContextMenu = ({
 					<ContextMenu.Popup className="origin-[var(--transform-origin)] min-w-[8rem] rounded-xl border border-slate-300 bg-white p-0.5 shadow-[0_12px_40px_rgba(15,23,42,0.25)] transition-[opacity,transform] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:shadow-[0_18px_45px_rgba(0,0,0,0.55)]">
 						<ContextMenu.Item
 							className={menuItemClassName}
-							onClick={invoke(onBranch)}
+							onClick={invoke(onSetActive)}
 						>
-							<span>Branch from here</span>
-						</ContextMenu.Item>
-						<ContextMenu.Item
-							className={menuItemClassName}
-							onClick={invoke(onDuplicate)}
-						>
-							<span>Duplicate here</span>
-						</ContextMenu.Item>
-						<ContextMenu.Separator className="mx-2 my-1 h-px bg-slate-200 dark:bg-slate-700" />
-						<ContextMenu.Item
-							className={`${menuItemClassName} text-rose-600 data-[highlighted]:text-white`}
-							onClick={invoke(onRemove)}
-						>
-							<span>Remove node</span>
+							<span>Set active cursor here</span>
 						</ContextMenu.Item>
 					</ContextMenu.Popup>
 				</ContextMenu.Positioner>

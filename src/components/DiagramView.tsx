@@ -1,13 +1,11 @@
 import {
 	Background,
-	type Connection,
-	Controls,
 	type Edge,
 	MiniMap,
 	type Node,
 	ReactFlow,
 } from "@xyflow/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
@@ -17,8 +15,7 @@ import NodeContextMenu from "./NodeContextMenu";
 
 interface DiagramViewProps {
 	onNodeDoubleClick?: (nodeId: string) => void;
-	onBranchFromNode?: (nodeId: string) => void;
-	onDuplicateFromNode?: (nodeId: string) => void;
+	onSetActiveNode?: (nodeId: string) => void;
 }
 
 const elk = new ELK();
@@ -41,28 +38,19 @@ const nodeStyleBase = {
 
 const DiagramView = ({
 	onNodeDoubleClick,
-	onBranchFromNode,
-	onDuplicateFromNode,
+	onSetActiveNode,
 }: DiagramViewProps) => {
 	const {
 		nodes: treeNodes,
 		edges: treeEdges,
 		activeTargetId,
 		compileActive,
-		canReparent,
-		reparentNode,
-		splitBranch,
-		removeNode,
 	} = useConversationTree(
 		useShallow((state) => ({
 			nodes: state.nodes,
 			edges: state.edges,
 			activeTargetId: state.activeTargetId,
 			compileActive: state.compileActive,
-			canReparent: state.canReparent,
-			reparentNode: state.reparentNode,
-			splitBranch: state.splitBranch,
-			removeNode: state.removeNode,
 		})),
 	);
 
@@ -184,7 +172,6 @@ const DiagramView = ({
 	const [contextMenuNodeId, setContextMenuNodeId] = useState<string | null>(
 		null,
 	);
-	const pendingNodeRemovalsRef = useRef<Set<string>>(new Set());
 
 	useEffect(() => {
 		const children = Object.values(treeNodes).map((node) => ({
@@ -232,7 +219,7 @@ const DiagramView = ({
 						}
 
 						const label = (
-							<div className="flex items-start justify-between gap-2">
+							<div className="flex items-start gap-2">
 								<div className="min-w-0">
 									<p className="text-xs font-mono uppercase text-slate-500">
 										{dataNode.role}
@@ -240,26 +227,6 @@ const DiagramView = ({
 									<p className="mt-1 text-sm font-medium leading-snug text-slate-800 line-clamp-3">
 										{dataNode.text}
 									</p>
-								</div>
-								<div className="flex flex-none gap-1 opacity-70 hover:opacity-100">
-									<button
-										type="button"
-										className="i-lucide-git-branch-plus w-4 h-4"
-										title="Branch here"
-										onClick={(event) => {
-											event.stopPropagation();
-											onBranchFromNode?.(child.id);
-										}}
-									/>
-									<button
-										type="button"
-										className="i-lucide-copy w-4 h-4"
-										title="Duplicate here"
-										onClick={(event) => {
-											event.stopPropagation();
-											onDuplicateFromNode?.(child.id);
-										}}
-									/>
 								</div>
 							</div>
 						);
@@ -342,17 +309,12 @@ const DiagramView = ({
 					onClose={() => {
 						setContextMenuNodeId(null);
 					}}
-					onBranch={onBranchFromNode}
-					onDuplicate={onDuplicateFromNode}
-					onRemove={(nodeId) => {
-						removeNode(nodeId);
-					}}
+					onSetActive={onSetActiveNode}
 				>
 					<ReactFlow
 						nodes={layoutNodes}
 						edges={layoutEdges}
 						fitView
-						nodesConnectable
 						nodesDraggable={false}
 						zoomOnDoubleClick={false}
 						onPaneClick={() => {
@@ -370,38 +332,9 @@ const DiagramView = ({
 							event.preventDefault();
 							setContextMenuNodeId(node.id);
 						}}
-						onConnect={(connection: Connection) => {
-							if (!connection.source || !connection.target) {
-								return;
-							}
-							if (canReparent(connection.source, connection.target)) {
-								reparentNode(connection.target, connection.source);
-							}
-						}}
-						onEdgesDelete={(edgesDeleted) => {
-							edgesDeleted.forEach((edge) => {
-								const pendingRemovals = pendingNodeRemovalsRef.current;
-								if (edge.target && !pendingRemovals.has(edge.target)) {
-									splitBranch(edge.target);
-								}
-							});
-						}}
-						onNodesDelete={(nodesDeleted) => {
-							nodesDeleted.forEach((node) => {
-								removeNode(node.id);
-							});
-							pendingNodeRemovalsRef.current.clear();
-						}}
-						onBeforeDelete={async ({ nodes }) => {
-							pendingNodeRemovalsRef.current = new Set(
-								nodes.map((node) => node.id),
-							);
-							return true;
-						}}
 					>
 						<Background />
 						<MiniMap />
-						<Controls />
 					</ReactFlow>
 				</NodeContextMenu>
 			) : (

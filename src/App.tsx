@@ -130,7 +130,6 @@ const App = () => {
 		setNodeText,
 		setNodeStatus,
 		cloneNode,
-		splitBranch,
 		predecessorOf,
 		compilePathTo,
 		activeTail,
@@ -152,7 +151,6 @@ const App = () => {
 			setNodeText: state.setNodeText,
 			setNodeStatus: state.setNodeStatus,
 			cloneNode: state.cloneNode,
-			splitBranch: state.splitBranch,
 			predecessorOf: state.predecessorOf,
 			compilePathTo: state.compilePathTo,
 			activeTail: state.activeTail,
@@ -280,16 +278,14 @@ const App = () => {
 		setIsGenerating(false);
 	};
 
-	const handleDuplicateFromNode = (nodeId: string) => {
-		const newId = cloneNode(nodeId);
-		if (!newId) {
+	const handleEditMessage = (nodeId: string, content: string) => {
+		const clonedId = cloneNode(nodeId);
+		if (!clonedId) {
 			return;
 		}
-		handleActivateThread(newId);
-	};
-
-	const handleEditMessage = (nodeId: string, content: string) => {
-		setEditingNodeId(nodeId);
+		setNodeStatus(clonedId, "draft");
+		setActiveTarget(clonedId);
+		setEditingNodeId(clonedId);
 		setPrompt(content);
 	};
 
@@ -328,8 +324,7 @@ const App = () => {
 			setEditingNodeId(undefined);
 			setPrompt("");
 		}
-		splitBranch(nodeId);
-		handleActivateThread(prevId);
+		setActiveTarget(prevId);
 	};
 
 	const handleSend = async () => {
@@ -518,7 +513,6 @@ const App = () => {
 								}
 								onDelete={() => handleDeleteMessage(message._metadata.uuid)}
 								onDetach={() => handleDetachMessage(message._metadata.uuid)}
-								onBranch={() => handleActivateThread(message._metadata.uuid)}
 							/>
 						))}
 					</div>
@@ -587,8 +581,7 @@ const App = () => {
 				<div className="flex-1 overflow-hidden px-2 py-2">
 					<DiagramView
 						onNodeDoubleClick={handleActivateThread}
-						onBranchFromNode={handleActivateThread}
-						onDuplicateFromNode={handleDuplicateFromNode}
+						onSetActiveNode={handleActivateThread}
 					/>
 				</div>
 			)}
