@@ -214,12 +214,17 @@ const App = () => {
 		}
 	}, [isTreeEmpty, createSystemMessage, setActiveTarget, chatMessages.length]);
 
-	useEffect(
-		() => () => {
+	useEffect(() => {
+		if (view !== "text" && textAbortControllerRef.current) {
+			textAbortControllerRef.current.abort();
+			textAbortControllerRef.current = null;
+			setIsTextGenerating(false);
+		}
+		return () => {
 			textAbortControllerRef.current?.abort();
-		},
-		[],
-	);
+			textAbortControllerRef.current = null;
+		};
+	}, [view]);
 
 	const streamControllersRef = useRef<Record<string, AbortController>>({});
 	const latestAssistantIdRef = useRef<string | undefined>(undefined);
@@ -242,6 +247,8 @@ const App = () => {
 
 	const handleClearConversation = () => {
 		abortActiveStreams();
+		handleTextCancel();
+		setTextContent("");
 		resetComposerState();
 		resetTree();
 		const systemId = createSystemMessage(defaultSystemPrompt);
@@ -400,10 +407,12 @@ const App = () => {
 	const handleTextCancel = () => {
 		const controller = textAbortControllerRef.current;
 		if (!controller) {
+			setIsTextGenerating(false);
 			return;
 		}
 		controller.abort();
 		textAbortControllerRef.current = null;
+		setIsTextGenerating(false);
 	};
 
 	const handleSend = async () => {
