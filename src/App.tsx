@@ -367,22 +367,21 @@ const App = () => {
 		textAbortControllerRef.current = abortController;
 		setIsTextGenerating(true);
 		try {
-			const stream = await client.current.responses.create(
+			const stream = await client.current.completions.create(
 				{
 					model: activeModel,
-					input: textContent.length > 0 ? textContent : " ",
+					prompt: textContent.length > 0 ? textContent : " ",
 					stream: true,
 					temperature: 0.3,
 				},
 				{ signal: abortController.signal },
 			);
 			for await (const event of stream) {
-				if (event.type === "response.output_text.delta") {
-					const delta = event.delta;
-					if (delta) {
-						setTextContent((draft) => draft + delta);
-					}
+				const delta = event.choices.at(0)?.text;
+				if (!delta) {
+					continue;
 				}
+				setTextContent((draft) => draft + delta);
 			}
 		} catch (error) {
 			if (abortController.signal.aborted) {
