@@ -1,11 +1,12 @@
 import { SegmentedControl, Select, UnstyledButton } from "@mantine/core";
+import type { AppView } from "../types";
 
 interface HeaderProps {
 	models: Array<{ id: string; name?: string | null }>;
 	activeModel: string | null;
 	onModelChange: (value: string | null) => void;
-	view: "chat" | "diagram" | "text";
-	onViewChange: (value: "chat" | "diagram" | "text") => void;
+	view: AppView;
+	onViewChange: (value: AppView) => void;
 	onClear: () => void;
 	onImport: () => void;
 	onExport: () => void;
@@ -14,7 +15,7 @@ interface HeaderProps {
 
 const viewOptions: Array<{
 	label: string;
-	value: "chat" | "diagram" | "text";
+	value: AppView;
 	icon: string;
 }> = [
 	{ label: "Chat", value: "chat", icon: "i-lucide-message-square" },
@@ -52,7 +53,7 @@ const Header = ({
 			<SegmentedControl
 				size="sm"
 				value={view}
-				onChange={(value) => onViewChange(value as "chat" | "diagram" | "text")}
+				onChange={(value) => onViewChange(value as AppView)}
 				data={viewOptions.map((option) => ({
 					value: option.value,
 					label: (

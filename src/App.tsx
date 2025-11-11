@@ -22,6 +22,7 @@ import SettingsModal from "./components/SettingsModal";
 import TextCompletionView from "./components/TextCompletionView";
 import type { ConversationSnapshot } from "./tree/types";
 import { useConversationTree } from "./tree/useConversationTree";
+import type { AppView } from "./types";
 
 const baseURLKey = "iaslate_baseURL";
 const apiKeyKey = "iaslate_apiKey";
@@ -121,7 +122,7 @@ const App = () => {
 	const [editingNodeId, setEditingNodeId] = useState<string | undefined>(
 		undefined,
 	);
-	const [view, setView] = useState<"chat" | "diagram" | "text">("chat");
+	const [view, setView] = useState<AppView>("chat");
 	const isComposing = useRef(false);
 	const {
 		nodes: treeNodes,
