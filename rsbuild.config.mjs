@@ -1,6 +1,5 @@
 import { defineConfig } from "@rsbuild/core";
 import { pluginReact } from "@rsbuild/plugin-react";
-// import { GenerateSW } from "@aaroon/workbox-rspack-plugin";
 
 export default defineConfig({
 	plugins: [pluginReact()],
@@ -12,13 +11,6 @@ export default defineConfig({
 				type: "css",
 			},
 		],
-	},
-	tools: {
-		rspack: {
-			plugins: [
-				// new GenerateSW({})
-			],
-		},
 	},
 	output: {
 		inlineScripts: true,
