@@ -15,22 +15,22 @@ const TextCompletionView = ({
 	onPredict,
 	onCancel,
 }: TextCompletionViewProps) => (
-	<div className="flex flex-1 flex-col gap-6 px-6 py-4">
-		<div className="flex-1 rounded-2xl bg-slate-50/90 p-4 backdrop-blur dark:bg-slate-900/40">
+	<div className="flex flex-1 min-h-0 flex-col gap-6 px-6 py-4">
+		<div className="flex min-h-0 flex-1 flex-col rounded-2xl bg-slate-50/90 p-4 backdrop-blur dark:bg-slate-900/40">
 			<Textarea
-				className="h-full"
-				minRows={12}
-				autosize
 				size="lg"
 				value={value}
 				onChange={(event) => {
 					onChange(event.target.value);
 				}}
-					placeholder="Provide a seed paragraph and let the model continue it…"
-					classNames={{
-						input: "h-full min-h-[18rem] resize-none border-none bg-transparent text-lg leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none dark:text-slate-100",
-					}}
-				/>
+				placeholder="Provide a seed paragraph and let the model continue it…"
+				classNames={{
+					root: "flex h-full flex-1 flex-col",
+					wrapper: "flex-1 min-h-0",
+					input:
+						"h-full min-h-[18rem] resize-none overflow-y-auto border-none bg-transparent text-lg leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none dark:text-slate-100",
+				}}
+			/>
 		</div>
 		<div className="flex justify-end">
 			<Button
