@@ -4,9 +4,11 @@ import {
 	type Edge,
 	MiniMap,
 	type Node,
+	type NodeChange,
 	ReactFlow,
+	applyNodeChanges,
 } from "@xyflow/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
@@ -184,6 +186,20 @@ const DiagramView = ({
 		null,
 	);
 	const pendingNodeRemovalsRef = useRef<Set<string>>(new Set());
+	const miniMapColors = useMemo(() => {
+		return {
+			nodeColor: (node: Node) =>
+				activePathIds.nodes.has(node.id) ? "#bfdbfe" : "#e2e8f0",
+			nodeStrokeColor: (node: Node) =>
+				activePathIds.nodes.has(node.id) ? "#2563eb" : "#94a3b8",
+		};
+	}, [activePathIds]);
+	const handleNodesChange = useCallback(
+		(changes: NodeChange[]) => {
+			setLayoutNodes((nodes) => applyNodeChanges(changes, nodes));
+		},
+		[setLayoutNodes],
+	);
 
 	useEffect(() => {
 		const children = Object.values(treeNodes).map((node) => ({
@@ -365,6 +381,7 @@ const DiagramView = ({
 								}
 							});
 						}}
+						onNodesChange={handleNodesChange}
 						onNodesDelete={(nodesDeleted) => {
 							nodesDeleted.forEach((node) => {
 								removeNode(node.id);
@@ -379,7 +396,11 @@ const DiagramView = ({
 						}}
 					>
 						<Background />
-						<MiniMap />
+						<MiniMap
+							maskColor="rgba(15, 23, 42, 0.12)"
+							nodeColor={miniMapColors.nodeColor}
+							nodeStrokeColor={miniMapColors.nodeStrokeColor}
+						/>
 					</ReactFlow>
 				</NodeContextMenu>
 			) : (
