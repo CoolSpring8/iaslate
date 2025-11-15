@@ -372,7 +372,7 @@ const App = () => {
 			const stream = await client.current.completions.create(
 				{
 					model: activeModel,
-					prompt: textContent.length > 0 ? textContent : " ",
+					prompt: textContent,
 					stream: true,
 					temperature: 0.3,
 				},
