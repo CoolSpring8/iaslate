@@ -8,7 +8,6 @@
         "@mantine/core": "^7.8.1",
         "@mantine/hooks": "^7.8.1",
         "@xyflow/react": "^12.9.1",
-        "elkjs": "^0.11.0",
         "idb-keyval": "^6.2.1",
         "immer": "^10.0.4",
         "openai": "^4.38.2",
@@ -327,8 +326,6 @@
     "eastasianwidth": ["eastasianwidth@0.2.0", "", {}, "sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA=="],
 
     "electron-to-chromium": ["electron-to-chromium@1.4.715", "", {}, "sha512-XzWNH4ZSa9BwVUQSDorPWAUQ5WGuYz7zJUNpNif40zFCiCl20t8zgylmreNmn26h5kiyw2lg7RfTmeMBsDklqg=="],
-
-    "elkjs": ["elkjs@0.11.0", "https://registry.npmmirror.com/elkjs/-/elkjs-0.11.0.tgz", {}, "sha512-u4J8h9mwEDaYMqo0RYJpqNMFDoMK7f+pu4GjcV+N8jIC7TRdORgzkfSjTJemhqONFfH6fBI3wpysgWbhgVWIXw=="],
 
     "emoji-regex": ["emoji-regex@9.2.2", "", {}, "sha512-L18DaJsXSUk2+42pv8mLs5jJT2hqFkFE4j21wOmgbUqsZ2hL72NsUU785g9RXgo3s0ZNgVl42TiHp3ZtOv/Vyg=="],
 

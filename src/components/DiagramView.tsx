@@ -10,7 +10,6 @@ import {
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
-import ELK from "elkjs/lib/elk.bundled.js";
 import { twJoin } from "tailwind-merge";
 import { useShallow } from "zustand/react/shallow";
 import { useConversationTree } from "../tree/useConversationTree";
@@ -22,14 +21,12 @@ interface DiagramViewProps {
 	onDuplicateFromNode?: (nodeId: string) => void;
 }
 
-const elk = new ELK();
-
 const boxSize = {
 	width: 320,
 	height: 80,
 };
 
-const columnGap = 64;
+const columnGap = 80;
 const rowGap = 80;
 
 const nodeStyleBase = {
@@ -202,121 +199,109 @@ const DiagramView = ({
 	);
 
 	useEffect(() => {
-		const children = Object.values(treeNodes).map((node) => ({
-			id: node.id,
-			width: boxSize.width,
-			height: boxSize.height,
-		}));
-		const edges = Object.values(treeEdges).map((edge) => ({
-			id: edge.id,
-			sources: [edge.from],
-			targets: [edge.to],
-		}));
+		// No conversation = no graph
+		const internalNodes = Object.values(treeNodes);
+		if (internalNodes.length === 0) {
+			setLayoutNodes([]);
+			setLayoutEdges([]);
+			return;
+		}
 
-		let cancelled = false;
-		void elk
-			.layout({
-				id: "root",
-				layoutOptions: {
-					"elk.algorithm": "layered",
-					"elk.direction": "DOWN",
-					"elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
-					"elk.spacing.nodeNode": "40",
-					"elk.layered.spacing.nodeNodeBetweenLayers": "80",
-					"elk.edgeRouting": "ORTHOGONAL",
-				},
-				children,
-				edges,
-			})
-			.then(
-				(result: {
-					children?: Array<{ id: string; x?: number; y?: number }>;
-					edges?: Array<{ id: string; sources?: string[]; targets?: string[] }>;
-				}) => {
-					if (cancelled) {
-						return;
-					}
-					const nodes: Node[] = (result.children ?? []).map((child) => {
-						const dataNode = treeNodes[child.id];
-						if (!dataNode) {
-							return {
-								id: child.id,
-								position: { x: child.x ?? 0, y: child.y ?? 0 },
-								data: { label: child.id },
-							} satisfies Node;
-						}
+		const laneById = new Map(laneAssignments);
+		let nextLane = laneAssignments.size;
+		for (const lane of laneAssignments.values()) {
+			nextLane = Math.max(nextLane, lane + 1);
+		}
 
-						const label = (
-							<div className="flex items-start gap-2">
-								<div className="min-w-0">
-									<p className="text-xs font-mono uppercase text-slate-500">
-										{dataNode.role}
-									</p>
-									<p className="mt-1 text-sm font-medium leading-snug text-slate-800 line-clamp-3">
-										{dataNode.text}
-									</p>
-								</div>
-							</div>
-						);
-
-						const isActive = activePathIds.nodes.has(child.id);
-						const style = {
-							...nodeStyleBase,
-							border: isActive ? "2px solid #2563eb" : "1px solid #e2e8f0",
-							opacity: isActive ? 1 : 0.7,
-						};
-
-						return {
-							id: child.id,
-							position: {
-								x:
-									(laneAssignments.get(child.id) ?? laneAssignments.size) *
-									(boxSize.width + columnGap),
-								y:
-									child.y ??
-									(depthByNode.get(child.id) ?? 0) * (boxSize.height + rowGap),
-							},
-							data: { label },
-							style,
-						} satisfies Node;
-					});
-
-					const edgesStyled: Edge[] = (result.edges ?? []).flatMap((edge) => {
-						const source = edge.sources?.[0];
-						const target = edge.targets?.[0];
-						if (!source || !target) {
-							return [];
-						}
-						const isActive = activePathIds.edges.has(edge.id);
-						return [
-							{
-								id: edge.id,
-								source,
-								target,
-								type: "smoothstep",
-								animated: false,
-								style: {
-									strokeWidth: isActive ? 2 : 1.5,
-									stroke: isActive ? "#2563eb" : "#94a3b8",
-								},
-							} as Edge,
-						];
-					});
-
-					setLayoutNodes(nodes);
-					setLayoutEdges(edgesStyled);
-				},
-			)
-			.catch(() => {
-				if (!cancelled) {
-					setLayoutNodes([]);
-					setLayoutEdges([]);
-				}
-			});
-
-		return () => {
-			cancelled = true;
+		const getLane = (nodeId: string): number => {
+			const lane = laneById.get(nodeId);
+			if (lane !== undefined) {
+				return lane;
+			}
+			if (process.env.NODE_ENV !== "production") {
+				// eslint-disable-next-line no-console
+				console.warn(`lane missing for node ${nodeId}; allocating new lane`);
+			}
+			const assigned = nextLane;
+			nextLane += 1;
+			laneById.set(nodeId, assigned);
+			return assigned;
 		};
+
+		// Sort by (depth, lane, createdAt) for stable ordering
+		const sortedNodes = [...internalNodes].sort((a, b) => {
+			const depthA = depthByNode.get(a.id) ?? 0;
+			const depthB = depthByNode.get(b.id) ?? 0;
+			if (depthA !== depthB) {
+				return depthA - depthB;
+			}
+
+			const laneA = getLane(a.id);
+			const laneB = getLane(b.id);
+			if (laneA !== laneB) {
+				return laneA - laneB;
+			}
+
+			const createdDiff = a.createdAt - b.createdAt;
+			if (createdDiff !== 0) {
+				return createdDiff;
+			}
+
+			return a.id.localeCompare(b.id);
+		});
+
+		const nodes: Node[] = sortedNodes.map((dataNode) => {
+			const label = (
+				<div className="flex items-start gap-2">
+					<div className="min-w-0">
+						<p className="text-xs font-mono uppercase text-slate-500">
+							{dataNode.role}
+						</p>
+						<p className="mt-1 text-sm font-medium leading-snug text-slate-800 line-clamp-3">
+							{dataNode.text}
+						</p>
+					</div>
+				</div>
+			);
+
+			const isActive = activePathIds.nodes.has(dataNode.id);
+			const style = {
+				...nodeStyleBase,
+				border: isActive ? "2px solid #2563eb" : "1px solid #e2e8f0",
+				opacity: isActive ? 1 : 0.7,
+			};
+
+			const lane = getLane(dataNode.id);
+			const depth = depthByNode.get(dataNode.id) ?? 0;
+
+			return {
+				id: dataNode.id,
+				position: {
+					x: lane * (boxSize.width + columnGap),
+					y: depth * (boxSize.height + rowGap),
+				},
+				data: { label },
+				style,
+			} satisfies Node;
+		});
+
+		const edgesStyled: Edge[] = Object.values(treeEdges).map((edge) => {
+			const isActive = activePathIds.edges.has(edge.id);
+			return {
+				id: edge.id,
+				source: edge.from,
+				target: edge.to,
+				type: "smoothstep",
+				animated: false,
+				style: {
+					strokeWidth: isActive ? 2 : 1.5,
+					stroke: isActive ? "#2563eb" : "#94a3b8",
+				},
+			} satisfies Edge;
+		});
+
+		setLayoutNodes(nodes);
+		setLayoutEdges(edgesStyled);
 	}, [
 		treeNodes,
 		treeEdges,
