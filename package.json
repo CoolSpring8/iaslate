@@ -13,7 +13,6 @@
 		"@mantine/core": "^7.8.1",
 		"@mantine/hooks": "^7.8.1",
 		"@xyflow/react": "^12.9.1",
-		"elkjs": "^0.11.0",
 		"idb-keyval": "^6.2.1",
 		"immer": "^10.0.4",
 		"openai": "^4.38.2",
