@@ -218,6 +218,7 @@ const DiagramView = ({
 			if (lane !== undefined) {
 				return lane;
 			}
+			// @ts-expect-error rsbuild v0.5.2 doesn't support env index access or import.meta.env
 			if (process.env.NODE_ENV !== "production") {
 				// eslint-disable-next-line no-console
 				console.warn(`lane missing for node ${nodeId}; allocating new lane`);
