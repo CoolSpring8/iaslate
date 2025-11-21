@@ -228,6 +228,11 @@ const DiagramView = ({
 			return assigned;
 		};
 
+		const laneLookup = new Map<string, number>();
+		for (const node of internalNodes) {
+			laneLookup.set(node.id, getLane(node.id));
+		}
+
 		// Sort by (depth, lane, createdAt) for stable ordering
 		const sortedNodes = [...internalNodes].sort((a, b) => {
 			const depthA = depthByNode.get(a.id) ?? 0;
@@ -236,8 +241,8 @@ const DiagramView = ({
 				return depthA - depthB;
 			}
 
-			const laneA = getLane(a.id);
-			const laneB = getLane(b.id);
+			const laneA = laneLookup.get(a.id) ?? 0;
+			const laneB = laneLookup.get(b.id) ?? 0;
 			if (laneA !== laneB) {
 				return laneA - laneB;
 			}
@@ -271,7 +276,7 @@ const DiagramView = ({
 				opacity: isActive ? 1 : 0.7,
 			};
 
-			const lane = getLane(dataNode.id);
+			const lane = laneLookup.get(dataNode.id) ?? 0;
 			const depth = depthByNode.get(dataNode.id) ?? 0;
 
 			return {
