@@ -1,0 +1,94 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 1c2b9560bbfbfe10cb01af080aeeed4ff59db29c..941a3a9b984b26d659e3a15fa11b74d7b1ce1a67 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -810,53 +810,30 @@ function convertToOpenAICompatibleCompletionPrompt({
+   user = "user",
+   assistant = "assistant"
+ }) {
+-  let text = "";
+-  if (prompt[0].role === "system") {
+-    text += `${prompt[0].content}
+-
+-`;
+-    prompt = prompt.slice(1);
+-  }
+-  for (const { role, content } of prompt) {
+-    switch (role) {
+-      case "system": {
++  const toText = (content, role) => content.map((part) => {
++    switch (part.type) {
++      case "text": {
++        return part.text;
++      }
++      case "tool-call": {
++        throw new UnsupportedFunctionalityError3({
++          functionality: "tool-call messages"
++        });
++      }
++      default: {
+         throw new InvalidPromptError({
+-          message: "Unexpected system message in prompt: ${content}",
++          message: `Unsupported ${role} content type in prompt: ${part.type}`,
+           prompt
+         });
+       }
+-      case "user": {
+-        const userMessage = content.map((part) => {
+-          switch (part.type) {
+-            case "text": {
+-              return part.text;
+-            }
+-          }
+-        }).filter(Boolean).join("");
+-        text += `${user}:
+-${userMessage}
+-
+-`;
+-        break;
+-      }
++    }
++  }).filter(Boolean).join("");
++  const promptText = prompt.map(({ role, content }) => {
++    switch (role) {
++      case "system":
++      case "user":
+       case "assistant": {
+-        const assistantMessage = content.map((part) => {
+-          switch (part.type) {
+-            case "text": {
+-              return part.text;
+-            }
+-            case "tool-call": {
+-              throw new UnsupportedFunctionalityError3({
+-                functionality: "tool-call messages"
+-              });
+-            }
+-          }
+-        }).join("");
+-        text += `${assistant}:
+-${assistantMessage}
+-
+-`;
+-        break;
++        return toText(content, role);
+       }
+       case "tool": {
+         throw new UnsupportedFunctionalityError3({
+@@ -868,13 +845,10 @@ ${assistantMessage}
+         throw new Error(`Unsupported role: ${_exhaustiveCheck}`);
+       }
+     }
+-  }
+-  text += `${assistant}:
+-`;
++  }).filter(Boolean).join("\n");
+   return {
+-    prompt: text,
+-    stopSequences: [`
+-${user}:`]
++    prompt: promptText,
++    stopSequences: []
+   };
+ }
+ 

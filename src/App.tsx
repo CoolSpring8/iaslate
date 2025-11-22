@@ -1,11 +1,10 @@
 import { Textarea, UnstyledButton } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { type ModelMessage, streamText } from "ai";
 import { get, set } from "idb-keyval";
-import { OpenAI } from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import {
 	type ChangeEvent,
-	type MutableRefObject,
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
@@ -15,6 +14,10 @@ import { Toaster, toast } from "sonner";
 import { twJoin } from "tailwind-merge";
 import { useImmer } from "use-immer";
 import { useShallow } from "zustand/react/shallow";
+import {
+	buildOpenAICompatibleProvider,
+	fetchOpenAICompatibleModels,
+} from "./ai/openaiCompatible";
 import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import MessageItem from "./components/MessageItem";
@@ -22,7 +25,7 @@ import SettingsModal from "./components/SettingsModal";
 import TextCompletionView from "./components/TextCompletionView";
 import type { ConversationSnapshot } from "./tree/types";
 import { useConversationTree } from "./tree/useConversationTree";
-import type { AppView } from "./types";
+import type { AppView, ModelInfo } from "./types";
 
 const baseURLKey = "iaslate_baseURL";
 const apiKeyKey = "iaslate_apiKey";
@@ -30,57 +33,72 @@ const modelsKey = "iaslate_models";
 
 const defaultSystemPrompt = "You are a helpful assistant.";
 
-const extractTextDelta = (input: unknown): string => {
-	if (!input) {
-		return "";
-	}
-	if (typeof input === "string") {
-		return input;
-	}
-	if (Array.isArray(input)) {
-		return input
-			.map((part) => {
-				if (typeof part === "string") {
-					return part;
-				}
-				if (typeof part === "object" && part !== null) {
-					if (
-						"text" in part &&
-						typeof (part as { text?: unknown }).text === "string"
-					) {
-						return (part as { text?: string }).text ?? "";
-					}
-					if (
-						"content" in part &&
-						typeof (part as { content?: unknown }).content === "string"
-					) {
-						return (part as { content?: string }).content ?? "";
-					}
-				}
-				return "";
-			})
-			.join("");
-	}
-	return "";
-};
-
 const App = () => {
 	const [baseURL, setBaseURL] = useState("");
 	const [apiKey, setAPIKey] = useState("");
-	const [models, setModels] = useImmer<OpenAI.Model[]>([]);
+	const [models, setModels] = useImmer<ModelInfo[]>([]);
 	const [activeModel, setActiveModel] = useImmer<string | null>(null);
 
-	const client = (() => {
-		const ref = useRef<OpenAI | null>(null);
-		if (!ref.current) {
-			ref.current = new OpenAI({
+	const openAIProvider = useMemo(
+		() =>
+			buildOpenAICompatibleProvider({
 				baseURL,
-				apiKey: apiKey || "_PLACEHOLDER_",
-				dangerouslyAllowBrowser: true,
-			});
-		}
-		return ref as MutableRefObject<OpenAI>;
-	})();
+				apiKey,
+			}),
+		[apiKey, baseURL],
+	);
+
+	const syncModels = useCallback(
+		async ({
+			baseURLOverride,
+			apiKeyOverride,
+			silent = false,
+		}: {
+			baseURLOverride?: string;
+			apiKeyOverride?: string;
+			silent?: boolean;
+		} = {}) => {
+			const targetBaseURL = (baseURLOverride ?? baseURL).trim();
+			const targetAPIKey = apiKeyOverride ?? apiKey;
+
+			if (!targetBaseURL) {
+				if (!silent) {
+					toast.error("Set an API base URL before syncing");
+				}
+				return [];
+			}
+
+			try {
+				const fetchedModels = await fetchOpenAICompatibleModels({
+					baseURL: targetBaseURL,
+					apiKey: targetAPIKey,
+				});
+				setModels(fetchedModels);
+				await set(modelsKey, fetchedModels);
+				const currentModelStillValid = fetchedModels.some(
+					(model) => model.id === activeModel,
+				);
+				const nextModelId =
+					(currentModelStillValid && activeModel) || fetchedModels.at(0)?.id;
+				setActiveModel(nextModelId ?? null);
+				if (!silent) {
+					toast.success("Synced models");
+				}
+				return fetchedModels;
+			} catch (error) {
+				console.error(error);
+				if (!silent) {
+					const message =
+						error instanceof Error
+							? error.message
+							: "Failed to fetch models from API";
+					toast.error(message);
+				}
+				return [];
+			}
+		},
+		[activeModel, apiKey, baseURL, setActiveModel, setModels],
+	);
 
 	useEffect(() => {
 		(async () => {
@@ -92,26 +110,24 @@ const App = () => {
 			if (storedAPIKey) {
 				setAPIKey(storedAPIKey);
 			}
-			const storedModels = await get<OpenAI.Model[]>(modelsKey);
-			if (storedModels) {
+			const storedModels = await get<ModelInfo[]>(modelsKey);
+			if (storedModels?.length) {
 				setModels(storedModels);
-			}
-			client.current = new OpenAI({
-				baseURL: storedBaseURL,
-				apiKey: storedAPIKey || "_PLACEHOLDER_",
-				dangerouslyAllowBrowser: true,
-			});
-			if (!storedModels) {
-				const response = await client.current.models.list();
-				setModels(response.data);
-				await set(modelsKey, response.data);
-				const nextModelId = response.data.at(0)?.id;
+				const nextModelId = storedModels.at(0)?.id;
 				if (nextModelId) {
 					setActiveModel(nextModelId);
 				}
+				return;
+			}
+			if (storedBaseURL) {
+				await syncModels({
+					baseURLOverride: storedBaseURL,
+					apiKeyOverride: storedAPIKey,
+					silent: true,
+				});
 			}
 		})();
-	}, []);
+	}, [setActiveModel, setModels, syncModels]);
 
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [prompt, setPrompt] = useImmer("");
@@ -365,25 +381,24 @@ const App = () => {
 			toast.error("Select a model before predicting");
 			return;
 		}
+		if (!openAIProvider) {
+			toast.error("Set an API base URL before predicting");
+			return;
+		}
 		const abortController = new AbortController();
 		textAbortControllerRef.current = abortController;
 		setIsTextGenerating(true);
 		try {
-			const stream = await client.current.completions.create(
-				{
-					model: activeModel,
-					prompt: textContent,
-					stream: true,
-					temperature: 0.3,
-				},
-				{ signal: abortController.signal },
-			);
-			for await (const event of stream) {
-				const delta = event.choices.at(0)?.text;
-				if (!delta) {
-					continue;
+			const stream = streamText({
+				model: openAIProvider.completionModel(activeModel),
+				prompt: textContent,
+				temperature: 0.3,
+				abortSignal: abortController.signal,
+			});
+			for await (const delta of stream.textStream) {
+				if (delta) {
+					setTextContent((draft) => draft + delta);
 				}
-				setTextContent((draft) => draft + delta);
 			}
 		} catch (error) {
 			if (abortController.signal.aborted) {
@@ -415,6 +430,10 @@ const App = () => {
 			toast.error("Select a model before sending");
 			return;
 		}
+		if (!openAIProvider) {
+			toast.error("Set an API base URL before sending");
+			return;
+		}
 		const trimmedPrompt = prompt.trim();
 		let resolvedParentId = activeTail() ?? activeTargetId;
 		if (!resolvedParentId) {
@@ -430,37 +449,31 @@ const App = () => {
 		latestAssistantIdRef.current = assistantId;
 		const abortController = new AbortController();
 		streamControllersRef.current[assistantId] = abortController;
-		const contextMessages = compilePathTo(resolvedParentId)
+		const contextMessages: ModelMessage[] = compilePathTo(resolvedParentId)
 			.filter((message) => message.role !== "tool")
-			.map<ChatCompletionMessageParam>((message) => ({
+			.map((message) => ({
 				role: message.role as "system" | "user" | "assistant",
 				content: message.content,
 			}));
 		try {
-			const stream = await client.current.chat.completions.create(
-				{
-					model: activeModel,
-					messages: contextMessages,
-					stream: true,
-					temperature: 0.3,
-				},
-				{ signal: abortController.signal },
-			);
+			const stream = streamText({
+				model: openAIProvider.chatModel(activeModel),
+				messages: contextMessages,
+				temperature: 0.3,
+				abortSignal: abortController.signal,
+			});
 			setIsGenerating(true);
-			for await (const chunk of stream) {
-				const delta = chunk.choices[0]?.delta;
-				const contentDelta = extractTextDelta(delta?.content);
-				const reasoningDelta = extractTextDelta(
-					(delta as { reasoning_content?: unknown } | undefined)
-						?.reasoning_content,
-				);
-				if (!contentDelta && !reasoningDelta) {
-					continue;
+			for await (const part of stream.fullStream) {
+				if (part.type === "text-delta" && part.text) {
+					appendToNode(assistantId, {
+						content: part.text,
+					});
 				}
-				appendToNode(assistantId, {
-					content: contentDelta,
-					reasoning: reasoningDelta,
-				});
+				if (part.type === "reasoning-delta" && part.text) {
+					appendToNode(assistantId, {
+						reasoning: part.text,
+					});
+				}
 			}
 			setNodeStatus(assistantId, "final");
 		} catch (error) {
@@ -525,24 +538,16 @@ const App = () => {
 		await set(baseURLKey, nextBaseURL);
 		setAPIKey(nextAPIKey);
 		await set(apiKeyKey, nextAPIKey);
-		client.current = new OpenAI({
-			baseURL: nextBaseURL,
-			apiKey: nextAPIKey,
-			dangerouslyAllowBrowser: true,
+		await syncModels({
+			baseURLOverride: nextBaseURL,
+			apiKeyOverride: nextAPIKey,
+			silent: true,
 		});
 		onSettingsClose();
 	};
 
 	const handleSyncModels = async () => {
-		const response = await client.current.models.list();
-		setModels(response.data);
-		await set(modelsKey, response.data);
-		if (!activeModel) {
-			const nextModelId = response.data.at(0)?.id;
-			if (nextModelId) {
-				setActiveModel(nextModelId);
-			}
-		}
+		await syncModels();
 	};
 
 	const editingMessage = editingNodeId
