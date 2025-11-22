@@ -161,16 +161,19 @@ const SettingsModal = ({
 	}, [open]);
 
 	useEffect(() => {
-		if (open && builtInAvailability === "unknown") {
+		if (
+			open &&
+			selectedProvider === "built-in" &&
+			builtInAvailability === "unknown"
+		) {
 			void handleCheckBuiltInAvailability();
 		}
-	}, [builtInAvailability, handleCheckBuiltInAvailability, open]);
-
-	useEffect(() => {
-		if (open && selectedProvider === "built-in") {
-			void handleCheckBuiltInAvailability();
-		}
-	}, [handleCheckBuiltInAvailability, open, selectedProvider]);
+	}, [
+		builtInAvailability,
+		handleCheckBuiltInAvailability,
+		open,
+		selectedProvider,
+	]);
 
 	useEffect(() => {
 		if (open) {
