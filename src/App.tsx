@@ -1,4 +1,3 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { Textarea, UnstyledButton } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { type ModelMessage, streamText } from "ai";
@@ -15,6 +14,10 @@ import { Toaster, toast } from "sonner";
 import { twJoin } from "tailwind-merge";
 import { useImmer } from "use-immer";
 import { useShallow } from "zustand/react/shallow";
+import {
+	buildOpenAICompatibleProvider,
+	fetchOpenAICompatibleModels,
+} from "./ai/openaiCompatible";
 import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import MessageItem from "./components/MessageItem";
@@ -36,17 +39,14 @@ const App = () => {
 	const [models, setModels] = useImmer<ModelInfo[]>([]);
 	const [activeModel, setActiveModel] = useImmer<string | null>(null);
 
-	const openAIProvider = useMemo(() => {
-		const trimmedBaseURL = baseURL.trim();
-		if (!trimmedBaseURL) {
-			return null;
-		}
-		return createOpenAICompatible({
-			baseURL: trimmedBaseURL,
-			name: "user-openai-compatible",
-			apiKey: apiKey || "_PLACEHOLDER_",
-		});
-	}, [apiKey, baseURL]);
+	const openAIProvider = useMemo(
+		() =>
+			buildOpenAICompatibleProvider({
+				baseURL,
+				apiKey,
+			}),
+		[apiKey, baseURL],
+	);
 
 	const syncModels = useCallback(
 		async ({
@@ -69,21 +69,10 @@ const App = () => {
 			}
 
 			try {
-				const response = await fetch(
-					`${targetBaseURL.replace(/\/+$/, "")}/models`,
-					{
-						headers: {
-							Authorization: `Bearer ${targetAPIKey || "_PLACEHOLDER_"}`,
-						},
-					},
-				);
-				if (!response.ok) {
-					throw new Error(`Request failed (${response.status})`);
-				}
-				const payload = (await response.json()) as {
-					data?: ModelInfo[];
-				};
-				const fetchedModels = Array.isArray(payload?.data) ? payload.data : [];
+				const fetchedModels = await fetchOpenAICompatibleModels({
+					baseURL: targetBaseURL,
+					apiKey: targetAPIKey,
+				});
 				setModels(fetchedModels);
 				await set(modelsKey, fetchedModels);
 				const currentModelStillValid = fetchedModels.some(
