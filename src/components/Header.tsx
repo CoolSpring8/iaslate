@@ -5,6 +5,9 @@ interface HeaderProps {
 	models: ModelInfo[];
 	activeModel: string | null;
 	onModelChange: (value: string | null) => void;
+	modelSelectorDisabled?: boolean;
+	modelPlaceholder?: string;
+	modelStatus?: string;
 	view: AppView;
 	onViewChange: (value: AppView) => void;
 	onClear: () => void;
@@ -27,6 +30,9 @@ const Header = ({
 	models,
 	activeModel,
 	onModelChange,
+	modelSelectorDisabled = false,
+	modelPlaceholder,
+	modelStatus,
 	view,
 	onViewChange,
 	onClear,
@@ -37,17 +43,24 @@ const Header = ({
 	<div className="flex items-center px-4 py-2">
 		<div className="flex items-center gap-2">
 			<h1 className="text-xl font-bold font-mono">iaslate</h1>
-			<Select
-				className="w-64"
-				data={models.map((model) => ({
-					value: model.id,
-					label: model.name || model.id,
-				}))}
-				value={activeModel}
-				onChange={onModelChange}
-				placeholder="Select a model"
-				aria-label="Select a model"
-			/>
+			{modelSelectorDisabled ? (
+				<div className="flex h-[2.25rem] w-64 items-center rounded-md border border-solid border-slate-300 bg-white px-3 text-sm leading-[1.1] text-slate-900 shadow-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+					{modelStatus ?? "Model selection disabled"}
+				</div>
+			) : (
+				<Select
+					className="w-64"
+					data={models.map((model) => ({
+						value: model.id,
+						label: model.name || model.id,
+					}))}
+					value={activeModel}
+					onChange={onModelChange}
+					placeholder={modelPlaceholder ?? "Select a model"}
+					disabled={modelSelectorDisabled}
+					aria-label="Select a model"
+				/>
+			)}
 		</div>
 		<div className="ml-4">
 			<SegmentedControl

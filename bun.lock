@@ -7,6 +7,7 @@
         "@ai-sdk/openai-compatible": "^1.0.27",
         "@ai-sdk/react": "^2.0.98",
         "@base-ui-components/react": "^1.0.0-beta.4",
+        "@built-in-ai/core": "^2.0.1",
         "@mantine/core": "^7.8.1",
         "@mantine/hooks": "^7.8.1",
         "@xyflow/react": "^12.9.1",
@@ -96,6 +97,8 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@1.8.3", "", { "os": "win32", "cpu": "x64" }, "sha512-/PJ59vA1pnQeKahemaQf4Nyj7IKUvGQSc3Ze1uIGi+Wvr1xF7rGobSrAAG01T/gUDG21vkDsZYM03NAmPiVkqg=="],
 
+    "@built-in-ai/core": ["@built-in-ai/core@2.0.1", "https://registry.npmmirror.com/@built-in-ai/core/-/core-2.0.1.tgz", { "dependencies": { "@mediapipe/tasks-text": "^0.10.22-rc.20250304" }, "peerDependencies": { "ai": ">=5.0.0" } }, "sha512-QiW2s3nCLcjCk7Zsm10iIytRLMz1SIrqzoUmEz4Azy5Yu8qtPRqnVTp0ig4qR/0FPuLEPwA4veqR6KNQKgeCtA=="],
+
     "@egoist/tailwindcss-icons": ["@egoist/tailwindcss-icons@1.7.4", "", { "dependencies": { "@iconify/utils": "^2.1.20" }, "peerDependencies": { "tailwindcss": "*" } }, "sha512-883qx0sqeNb8km7os0w8K6UYue88dbgTWwyEUwW74Bgz0H7t+m7PMIIEvSQ4JqHwA823Qd5ciz+NoTBWKaMYfg=="],
 
     "@floating-ui/core": ["@floating-ui/core@1.7.3", "https://registry.npmmirror.com/@floating-ui/core/-/core-1.7.3.tgz", { "dependencies": { "@floating-ui/utils": "^0.2.10" } }, "sha512-sGnvb5dmrJaKEZ+LDIpguvdX3bDlEllmv4/ClQ9awcmCZrlx5jQyyMWFM5kBI+EyNOCDDiKk8il0zeuX3Zlg/w=="],
@@ -129,6 +132,8 @@
     "@mantine/core": ["@mantine/core@7.8.1", "", { "dependencies": { "@floating-ui/react": "^0.26.9", "clsx": "2.1.0", "react-number-format": "^5.3.1", "react-remove-scroll": "^2.5.7", "react-textarea-autosize": "8.5.3", "type-fest": "^4.12.0" }, "peerDependencies": { "@mantine/hooks": "7.8.1", "react": "^18.2.0", "react-dom": "^18.2.0" } }, "sha512-dttbP2BhBzFJYBqgAQedJRca5+MXlJbppRhRsufnFeO7YC/UpZutOoHQ9dxGEQnhAWJ/d+wuRvYWG/gXex+wYQ=="],
 
     "@mantine/hooks": ["@mantine/hooks@7.8.1", "", { "peerDependencies": { "react": "^18.2.0" } }, "sha512-zCLqnxTUR2N6Awbt4rv/26UKTc75dXTVmCPsWUb6wdQExuC28fucG6kMoNYHVmOBDq9f3KP9zWOGDelHM2ogZA=="],
+
+    "@mediapipe/tasks-text": ["@mediapipe/tasks-text@0.10.22-rc.20250304", "https://registry.npmmirror.com/@mediapipe/tasks-text/-/tasks-text-0.10.22-rc.20250304.tgz", {}, "sha512-J2AFxsh+Pra2OZXf+T4iC8p4JeLyLjg7wU7l2mxcNPNY13wmVhYADxkOLSQq7BPRuXj5aBj7A98dBgZh++s6OQ=="],
 
     "@module-federation/runtime": ["@module-federation/runtime@0.0.8", "", { "dependencies": { "@module-federation/sdk": "0.0.8" } }, "sha512-Hi9g10aHxHdQ7CbchSvke07YegYwkf162XPOmixNmJr5Oy4wVa2d9yIVSrsWFhBRbbvM5iJP6GrSuEq6HFO3ug=="],
 
