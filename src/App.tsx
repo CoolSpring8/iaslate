@@ -97,12 +97,14 @@ const App = () => {
 			baseURLOverride,
 			apiKeyOverride,
 			silent = false,
+			force = false,
 		}: {
 			baseURLOverride?: string;
 			apiKeyOverride?: string;
 			silent?: boolean;
+			force?: boolean;
 		} = {}) => {
-			if (providerKind !== "openai-compatible") {
+			if (!force && providerKind !== "openai-compatible") {
 				return [];
 			}
 			const targetBaseURL = (baseURLOverride ?? baseURL).trim();
@@ -627,6 +629,7 @@ const App = () => {
 				baseURLOverride: nextBaseURL,
 				apiKeyOverride: nextAPIKey,
 				silent: true,
+				force: true,
 			});
 		} else {
 			setActiveModel(null);
