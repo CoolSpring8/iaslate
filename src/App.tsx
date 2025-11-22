@@ -26,7 +26,12 @@ import SettingsModal from "./components/SettingsModal";
 import TextCompletionView from "./components/TextCompletionView";
 import type { ConversationSnapshot } from "./tree/types";
 import { useConversationTree } from "./tree/useConversationTree";
-import type { AppView, ModelInfo, ProviderKind } from "./types";
+import type {
+	AppView,
+	BuiltInAvailability,
+	ModelInfo,
+	ProviderKind,
+} from "./types";
 
 const baseURLKey = "iaslate_baseURL";
 const apiKeyKey = "iaslate_apiKey";
@@ -42,11 +47,8 @@ const App = () => {
 	const [activeModel, setActiveModel] = useImmer<string | null>(null);
 	const [providerKind, setProviderKind] =
 		useState<ProviderKind>("openai-compatible");
-	const [builtInStatus, setBuiltInStatus] = useState<{
-		state: "idle" | "checking" | "unavailable" | "downloading" | "ready";
-		progress?: number;
-	}>({ state: "idle" });
-	const builtInModelRef = useRef<ReturnType<typeof builtInAI> | null>(null);
+	const [builtInAvailability, setBuiltInAvailability] =
+		useState<BuiltInAvailability>("unknown");
 
 	const openAIProvider = useMemo(
 		() =>
@@ -61,48 +63,53 @@ const App = () => {
 		if (providerKind !== "built-in") {
 			return undefined;
 		}
-		switch (builtInStatus.state) {
-			case "checking":
-				return "Checking built-in AI...";
+		switch (builtInAvailability) {
+			case "downloading":
+				return "Built-in AI downloading...";
+			case "available":
+				return "Built-in AI ready";
+			case "downloadable":
+				return "Download model in Settings";
 			case "unavailable":
 				return "Built-in AI unavailable";
-			case "downloading":
-				return `Downloading model... ${Math.round(
-					(builtInStatus.progress ?? 0) * 100,
-				)}%`;
-			case "ready":
-				return "Built-in AI ready";
 			default:
 				return "Built-in AI";
 		}
-	}, [builtInStatus.progress, builtInStatus.state, providerKind]);
+	}, [builtInAvailability, providerKind]);
 
-	const ensureBuiltInModelReady = useCallback(async () => {
+	const getBuiltInChatModel = useCallback(() => {
+		// Return a fresh model so each send can create a new session with the latest system prompt.
+		return builtInAI();
+	}, []);
+
+	const normalizeBuiltInAvailability = useCallback(
+		(availability: string | undefined): BuiltInAvailability => {
+			if (availability === "available") {
+				return "available";
+			}
+			if (availability === "downloading") {
+				return "downloading";
+			}
+			if (
+				availability === "downloadable" ||
+				availability === "available-after-download"
+			) {
+				return "downloadable";
+			}
+			return "unavailable";
+		},
+		[],
+	);
+
+	const refreshBuiltInAvailability = useCallback(async () => {
 		try {
-			const model = builtInModelRef.current ?? builtInAI();
-			builtInModelRef.current = model;
-			setBuiltInStatus({ state: "checking" });
-			const availability = await model.availability();
-			if (availability === "unavailable") {
-				setBuiltInStatus({ state: "unavailable" });
-				toast.error("Browser does not support built-in AI");
-				return null;
-			}
-			if (availability === "downloadable") {
-				setBuiltInStatus({ state: "downloading", progress: 0 });
-				await model.createSessionWithProgress((progress) => {
-					setBuiltInStatus({ state: "downloading", progress });
-				});
-			}
-			setBuiltInStatus({ state: "ready", progress: 1 });
-			return model;
+			const availability = await builtInAI().availability();
+			setBuiltInAvailability(normalizeBuiltInAvailability(availability));
 		} catch (error) {
 			console.error(error);
-			setBuiltInStatus({ state: "unavailable" });
-			toast.error("Failed to prepare built-in AI");
-			return null;
+			setBuiltInAvailability("unavailable");
 		}
-	}, []);
+	}, [normalizeBuiltInAvailability]);
 
 	const syncModels = useCallback(
 		async ({
@@ -188,28 +195,19 @@ const App = () => {
 					apiKeyOverride: storedAPIKey,
 					silent: true,
 				});
-			} else if (storedProvider === "built-in") {
-				void ensureBuiltInModelReady();
 			}
 		})();
-	}, [ensureBuiltInModelReady, setActiveModel, setModels, syncModels]);
+	}, [setActiveModel, setModels, syncModels]);
+
+	useEffect(() => {
+		void refreshBuiltInAvailability();
+	}, [refreshBuiltInAvailability]);
 
 	useEffect(() => {
 		if (providerKind === "built-in") {
 			setActiveModel(null);
-			if (builtInStatus.state === "idle") {
-				void ensureBuiltInModelReady();
-			}
 		}
-		if (providerKind === "openai-compatible") {
-			setBuiltInStatus({ state: "idle" });
-		}
-	}, [
-		builtInStatus.state,
-		ensureBuiltInModelReady,
-		providerKind,
-		setActiveModel,
-	]);
+	}, [providerKind, setActiveModel]);
 
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [prompt, setPrompt] = useImmer("");
@@ -528,11 +526,11 @@ const App = () => {
 				toast.error("Set an API base URL before sending");
 				return;
 			}
-		}
-		const builtInModel = usingOpenAI ? null : await ensureBuiltInModelReady();
-		if (!usingOpenAI && !builtInModel) {
+		} else if (builtInAvailability !== "available") {
+			toast.error("Download the built-in model in Settings before chatting");
 			return;
 		}
+		const builtInModel = usingOpenAI ? null : getBuiltInChatModel();
 		const trimmedPrompt = prompt.trim();
 		let resolvedParentId = activeTail() ?? activeTargetId;
 		if (!resolvedParentId) {
@@ -651,7 +649,6 @@ const App = () => {
 			});
 		} else {
 			setActiveModel(null);
-			void ensureBuiltInModelReady();
 		}
 		onSettingsClose();
 	};
@@ -820,6 +817,8 @@ const App = () => {
 				baseURL={baseURL}
 				apiKey={apiKey}
 				providerKind={providerKind}
+				builtInAvailability={builtInAvailability}
+				onBuiltInAvailabilityChange={setBuiltInAvailability}
 				onClose={onSettingsClose}
 				onSave={handleSettingsSave}
 				onSyncModels={handleSyncModels}

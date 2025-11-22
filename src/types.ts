@@ -19,3 +19,10 @@ export interface ModelInfo {
 }
 
 export type ProviderKind = "openai-compatible" | "built-in";
+
+export type BuiltInAvailability =
+	| "unknown"
+	| "unavailable"
+	| "downloadable"
+	| "downloading"
+	| "available";
