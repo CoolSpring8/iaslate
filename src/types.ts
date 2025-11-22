@@ -17,3 +17,5 @@ export interface ModelInfo {
 	object?: string;
 	owned_by?: string;
 }
+
+export type ProviderKind = "openai-compatible" | "built-in";
