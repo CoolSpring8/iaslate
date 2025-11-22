@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { Textarea, UnstyledButton } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { type CoreMessage, streamText } from "ai";
+import { type ModelMessage, streamText } from "ai";
 import { get, set } from "idb-keyval";
 import {
 	type ChangeEvent,
@@ -460,10 +460,10 @@ const App = () => {
 		latestAssistantIdRef.current = assistantId;
 		const abortController = new AbortController();
 		streamControllersRef.current[assistantId] = abortController;
-		const contextMessages: CoreMessage[] = compilePathTo(resolvedParentId)
+		const contextMessages: ModelMessage[] = compilePathTo(resolvedParentId)
 			.filter((message) => message.role !== "tool")
 			.map((message) => ({
-				role: message.role,
+				role: message.role as "system" | "user" | "assistant",
 				content: message.content,
 			}));
 		try {
