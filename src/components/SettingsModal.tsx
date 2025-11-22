@@ -55,25 +55,6 @@ const SettingsModal = ({
 	const [isDownloading, setIsDownloading] = useState(false);
 	const downloadModelRef = useRef<ReturnType<typeof builtInAI> | null>(null);
 
-	const normalizeAvailability = useCallback(
-		(availability: string | undefined): BuiltInAvailability => {
-			if (availability === "available") {
-				return "available";
-			}
-			if (availability === "downloading") {
-				return "downloading";
-			}
-			if (
-				availability === "downloadable" ||
-				availability === "available-after-download"
-			) {
-				return "downloadable";
-			}
-			return "unavailable";
-		},
-		[],
-	);
-
 	const handleCheckBuiltInAvailability = useCallback(async () => {
 		if (isDownloading) {
 			return;
@@ -83,7 +64,7 @@ const SettingsModal = ({
 		try {
 			const model = builtInAI();
 			const availability = await model.availability();
-			onBuiltInAvailabilityChange(normalizeAvailability(availability));
+			onBuiltInAvailabilityChange(availability as BuiltInAvailability);
 		} catch (error) {
 			console.error(error);
 			onBuiltInAvailabilityChange("unavailable");
@@ -93,7 +74,7 @@ const SettingsModal = ({
 					: "Failed to check built-in model status",
 			);
 		}
-	}, [isDownloading, normalizeAvailability, onBuiltInAvailabilityChange]);
+	}, [isDownloading, onBuiltInAvailabilityChange]);
 
 	const handleDownloadModel = useCallback(async () => {
 		if (
@@ -110,7 +91,7 @@ const SettingsModal = ({
 		const model = builtInAI();
 		downloadModelRef.current = model;
 		try {
-			const availability = normalizeAvailability(await model.availability());
+			const availability = (await model.availability()) as BuiltInAvailability;
 			switch (availability) {
 				case "unavailable": {
 					onBuiltInAvailabilityChange("unavailable");
@@ -152,7 +133,6 @@ const SettingsModal = ({
 	}, [
 		builtInAvailability,
 		isDownloading,
-		normalizeAvailability,
 		onBuiltInAvailabilityChange,
 	]);
 

@@ -82,34 +82,15 @@ const App = () => {
 		return builtInAI();
 	}, []);
 
-	const normalizeBuiltInAvailability = useCallback(
-		(availability: string | undefined): BuiltInAvailability => {
-			if (availability === "available") {
-				return "available";
-			}
-			if (availability === "downloading") {
-				return "downloading";
-			}
-			if (
-				availability === "downloadable" ||
-				availability === "available-after-download"
-			) {
-				return "downloadable";
-			}
-			return "unavailable";
-		},
-		[],
-	);
-
 	const refreshBuiltInAvailability = useCallback(async () => {
 		try {
 			const availability = await builtInAI().availability();
-			setBuiltInAvailability(normalizeBuiltInAvailability(availability));
+			setBuiltInAvailability(availability as BuiltInAvailability);
 		} catch (error) {
 			console.error(error);
 			setBuiltInAvailability("unavailable");
 		}
-	}, [normalizeBuiltInAvailability]);
+	}, []);
 
 	const syncModels = useCallback(
 		async ({
