@@ -1,8 +1,8 @@
 import { SegmentedControl, Select, UnstyledButton } from "@mantine/core";
-import type { AppView } from "../types";
+import type { AppView, ModelInfo } from "../types";
 
 interface HeaderProps {
-	models: Array<{ id: string; name?: string | null }>;
+	models: ModelInfo[];
 	activeModel: string | null;
 	onModelChange: (value: string | null) => void;
 	view: AppView;
@@ -58,10 +58,7 @@ const Header = ({
 					value: option.value,
 					label: (
 						<span className="flex items-center gap-2 text-sm font-medium">
-							<span
-								className={`w-4 h-4 ${option.icon}`}
-								aria-hidden="true"
-							/>
+							<span className={`w-4 h-4 ${option.icon}`} aria-hidden="true" />
 							{option.label}
 						</span>
 					),

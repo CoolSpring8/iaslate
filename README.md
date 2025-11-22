@@ -24,11 +24,12 @@ A tiny browser‑based chat UI packaged as a single static HTML file. It is inte
 
 ## Security Notes
 
-- The API key is stored locally in the browser (IndexedDB) and requests are sent from the client (`dangerouslyAllowBrowser: true`). Treat the key as accessible to any JavaScript code running in the page.
+- The API key is stored locally in the browser (IndexedDB) and requests are sent directly from the client. Treat the key as accessible to any JavaScript code running in the page.
 
 ## Tech Stack
 
 - React 18, Mantine UI, Tailwind CSS
+- Vercel AI SDK
 - Rsbuild (Rspack)
 
 ## Related Projects

@@ -10,3 +10,10 @@ export interface Message {
 	reasoning_content?: string;
 	_metadata: MessageMetadata;
 }
+
+export interface ModelInfo {
+	id: string;
+	name?: string | null;
+	object?: string;
+	owned_by?: string;
+}

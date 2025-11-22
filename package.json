@@ -9,13 +9,15 @@
 		"preview": "rsbuild preview"
 	},
 	"dependencies": {
+		"@ai-sdk/openai-compatible": "^1.0.27",
+		"@ai-sdk/react": "^2.0.98",
 		"@base-ui-components/react": "^1.0.0-beta.4",
 		"@mantine/core": "^7.8.1",
 		"@mantine/hooks": "^7.8.1",
 		"@xyflow/react": "^12.9.1",
+		"ai": "^5.0.98",
 		"idb-keyval": "^6.2.1",
 		"immer": "^10.0.4",
-		"openai": "^4.38.2",
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",
 		"react-hook-form": "^7.51.3",
