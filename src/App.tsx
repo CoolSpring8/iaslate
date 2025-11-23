@@ -1,6 +1,6 @@
 import { builtInAI } from "@built-in-ai/core";
 import { useDisclosure } from "@mantine/hooks";
-import { type ModelMessage, streamText } from "ai";
+import { streamText } from "ai";
 import {
 	type ChangeEvent,
 	useCallback,
@@ -13,14 +13,17 @@ import { Toaster, toast } from "sonner";
 import { useImmer } from "use-immer";
 import { useShallow } from "zustand/react/shallow";
 import { buildOpenAICompatibleProvider } from "./ai/openaiCompatible";
+import { sendMessage } from "./ai/sendMessage";
 import ChatView from "./components/ChatView";
 import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import SettingsModal from "./components/SettingsModal";
 import TextCompletionView from "./components/TextCompletionView";
+import { useStreamManager } from "./hooks/useStreamManager";
 import { useSettingsStore } from "./state/useSettingsStore";
 import { useConversationTree } from "./tree/useConversationTree";
-import type { AppView, BuiltInAvailability, ProviderKind } from "./types";
+import type { AppView } from "./types";
+import { deleteMessage } from "./utils/chatActions";
 import { exportSnapshotToFile, parseSnapshotFile } from "./utils/snapshots";
 
 const defaultSystemPrompt = "You are a helpful assistant.";
@@ -34,9 +37,8 @@ const App = () => {
 		setActiveModel,
 		providerKind,
 		builtInAvailability,
-		setBuiltInAvailability,
 		hydrate,
-		saveSettings,
+		refreshBuiltInAvailability,
 	} = useSettingsStore(
 		useShallow((state) => ({
 			baseURL: state.baseURL,
@@ -46,9 +48,8 @@ const App = () => {
 			setActiveModel: state.setActiveModel,
 			providerKind: state.providerKind,
 			builtInAvailability: state.builtInAvailability,
-			setBuiltInAvailability: state.setBuiltInAvailability,
 			hydrate: state.hydrate,
-			saveSettings: state.saveSettings,
+			refreshBuiltInAvailability: state.refreshBuiltInAvailability,
 		})),
 	);
 
@@ -84,16 +85,6 @@ const App = () => {
 		return builtInAI();
 	}, []);
 
-	const refreshBuiltInAvailability = useCallback(async () => {
-		try {
-			const availability = await builtInAI().availability();
-			setBuiltInAvailability(availability as BuiltInAvailability);
-		} catch (error) {
-			console.error(error);
-			setBuiltInAvailability("unavailable");
-		}
-	}, [setBuiltInAvailability]);
-
 	useEffect(() => {
 		void hydrate();
 	}, [hydrate]);
@@ -119,6 +110,7 @@ const App = () => {
 	const [view, setView] = useState<AppView>("chat");
 	const [isPromptDirty, setIsPromptDirty] = useState(false);
 	const [composerResetSignal, setComposerResetSignal] = useState(0);
+	const streamManager = useStreamManager();
 	const {
 		nodes: treeNodes,
 		edges: treeEdges,
@@ -226,17 +218,11 @@ const App = () => {
 		}
 	}, [providerKind, view]);
 
-	const streamControllersRef = useRef<Record<string, AbortController>>({});
-	const latestAssistantIdRef = useRef<string | undefined>(undefined);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const textAbortControllerRef = useRef<AbortController | null>(null);
 
 	const abortActiveStreams = () => {
-		Object.values(streamControllersRef.current).forEach((controller) => {
-			controller.abort();
-		});
-		streamControllersRef.current = {};
-		latestAssistantIdRef.current = undefined;
+		streamManager.abortAll();
 		setIsGenerating(false);
 	};
 
@@ -313,28 +299,19 @@ const App = () => {
 	};
 
 	const handleDeleteMessage = (nodeId: string) => {
-		const controller = streamControllersRef.current[nodeId];
-		if (controller) {
-			controller.abort();
-			delete streamControllersRef.current[nodeId];
-			setIsGenerating(false);
-		}
-		if (latestAssistantIdRef.current === nodeId) {
-			latestAssistantIdRef.current = undefined;
-		}
-		removeNodeFromTree(nodeId);
-		if (editingNodeId === nodeId) {
-			resetComposerState();
-		}
-		const tailId = activeTail();
-		if (tailId) {
-			setActiveTarget(tailId);
-		} else if (isTreeEmpty()) {
-			const systemId = createSystemMessage(defaultSystemPrompt);
-			setActiveTarget(systemId);
-		} else {
-			setActiveTarget(undefined);
-		}
+		deleteMessage({
+			nodeId,
+			editingNodeId,
+			streamManager,
+			setIsGenerating,
+			removeNodeFromTree,
+			resetComposerState,
+			activeTail,
+			isTreeEmpty,
+			createSystemMessage,
+			setActiveTarget,
+			defaultSystemPrompt,
+		});
 	};
 
 	const handleDetachMessage = (nodeId: string) => {
@@ -405,78 +382,25 @@ const App = () => {
 	};
 
 	const handleSend = async (promptText: string) => {
-		const usingOpenAI = providerKind === "openai-compatible";
-		if (usingOpenAI) {
-			if (!activeModel) {
-				toast.error("Select a model before sending");
-				return;
-			}
-			if (!openAIProvider) {
-				toast.error("Set an API base URL before sending");
-				return;
-			}
-		} else if (builtInAvailability !== "available") {
-			toast.error("Download the built-in model in Settings before chatting");
-			return;
-		}
-		const builtInModel = usingOpenAI ? null : getBuiltInChatModel();
-		const trimmedPrompt = promptText.trim();
-		let resolvedParentId = activeTail() ?? activeTargetId;
-		if (!resolvedParentId) {
-			resolvedParentId = createSystemMessage(defaultSystemPrompt);
-		}
-		if (trimmedPrompt.length > 0) {
-			resolvedParentId = createUserAfter(resolvedParentId, trimmedPrompt);
-		}
-		const assistantId = createAssistantAfter(resolvedParentId);
-		setNodeStatus(assistantId, "streaming");
-		setActiveTarget(assistantId);
-		latestAssistantIdRef.current = assistantId;
-		const abortController = new AbortController();
-		streamControllersRef.current[assistantId] = abortController;
-		const contextMessages: ModelMessage[] = compilePathTo(resolvedParentId)
-			.filter((message) => message.role !== "tool")
-			.map((message) => ({
-				role: message.role as "system" | "user" | "assistant",
-				content: message.content,
-			}));
-		try {
-			const stream = streamText({
-				model: usingOpenAI
-					? openAIProvider!.chatModel(activeModel!)
-					: builtInModel!,
-				messages: contextMessages,
-				temperature: 0.3,
-				abortSignal: abortController.signal,
-			});
-			setIsGenerating(true);
-			for await (const part of stream.fullStream) {
-				if (part.type === "text-delta" && part.text) {
-					appendToNode(assistantId, {
-						content: part.text,
-					});
-				}
-				if (part.type === "reasoning-delta" && part.text) {
-					appendToNode(assistantId, {
-						reasoning: part.text,
-					});
-				}
-			}
-			setNodeStatus(assistantId, "final");
-		} catch (error) {
-			if (abortController.signal.aborted) {
-				setNodeStatus(assistantId, "draft");
-			} else {
-				setNodeStatus(assistantId, "error");
-				throw error;
-			}
-		} finally {
-			setIsGenerating(false);
-			delete streamControllersRef.current[assistantId];
-			if (latestAssistantIdRef.current === assistantId) {
-				latestAssistantIdRef.current = undefined;
-			}
-		}
+		await sendMessage(promptText, {
+			providerKind,
+			builtInAvailability,
+			activeModel,
+			openAIProvider,
+			getBuiltInChatModel,
+			activeTargetId,
+			activeTail,
+			createSystemMessage,
+			createUserAfter,
+			createAssistantAfter,
+			setNodeStatus,
+			setActiveTarget,
+			appendToNode,
+			compilePathTo,
+			streamManager,
+			setIsGenerating,
+			defaultSystemPrompt,
+		});
 	};
 
 	const handleFinishEdit = (nodeId: string, text: string) => {
@@ -490,23 +414,6 @@ const App = () => {
 			setActiveTarget(replacementId);
 		}
 		resetComposerState();
-	};
-
-	const handleSettingsSave = async ({
-		baseURL: nextBaseURL,
-		apiKey: nextAPIKey,
-		providerKind: nextProviderKind,
-	}: {
-		baseURL: string;
-		apiKey: string;
-		providerKind: ProviderKind;
-	}) => {
-		await saveSettings({
-			baseURL: nextBaseURL,
-			apiKey: nextAPIKey,
-			providerKind: nextProviderKind,
-		});
-		onSettingsClose();
 	};
 
 	return (

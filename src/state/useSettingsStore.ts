@@ -1,3 +1,4 @@
+import { builtInAI } from "@built-in-ai/core";
 import { get as getValue, set as setValue } from "idb-keyval";
 import { toast } from "sonner";
 import { create } from "zustand";
@@ -20,6 +21,7 @@ interface SettingsState {
 	isHydrated: boolean;
 	setActiveModel: (model: string | null) => void;
 	setBuiltInAvailability: (availability: BuiltInAvailability) => void;
+	refreshBuiltInAvailability: () => Promise<void>;
 	hydrate: () => Promise<void>;
 	saveSettings: (values: {
 		baseURL: string;
@@ -45,6 +47,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 	setActiveModel: (model) => set({ activeModel: model }),
 	setBuiltInAvailability: (availability) =>
 		set({ builtInAvailability: availability }),
+	refreshBuiltInAvailability: async () => {
+		try {
+			const availability = await builtInAI().availability();
+			set({ builtInAvailability: availability as BuiltInAvailability });
+		} catch (error) {
+			console.error(error);
+			set({ builtInAvailability: "unavailable" });
+		}
+	},
 	hydrate: async () => {
 		const [storedProvider, storedBaseURL, storedAPIKey, storedModels] =
 			await Promise.all([

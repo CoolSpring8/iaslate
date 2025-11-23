@@ -32,6 +32,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		providerKind,
 		builtInAvailability,
 		setBuiltInAvailability,
+		refreshBuiltInAvailability,
 		saveSettings,
 		syncModels,
 	} = useSettingsStore(
@@ -41,6 +42,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			providerKind: state.providerKind,
 			builtInAvailability: state.builtInAvailability,
 			setBuiltInAvailability: state.setBuiltInAvailability,
+			refreshBuiltInAvailability: state.refreshBuiltInAvailability,
 			saveSettings: state.saveSettings,
 			syncModels: state.syncModels,
 		})),
@@ -66,19 +68,16 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		setBuiltInAvailability("unknown");
 		setDownloadError(null);
 		try {
-			const model = builtInAI();
-			const availability = await model.availability();
-			setBuiltInAvailability(availability as BuiltInAvailability);
+			await refreshBuiltInAvailability();
 		} catch (error) {
 			console.error(error);
-			setBuiltInAvailability("unavailable");
 			setDownloadError(
 				error instanceof Error
 					? error.message
 					: "Failed to check built-in model status",
 			);
 		}
-	}, [isDownloading, setBuiltInAvailability]);
+	}, [isDownloading, refreshBuiltInAvailability, setBuiltInAvailability]);
 
 	const handleDownloadModel = useCallback(async () => {
 		if (
