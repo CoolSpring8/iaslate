@@ -11,8 +11,9 @@ A tiny browser‑based chat UI packaged as a single static HTML file. It is inte
 ## Configure API
 
 1. Click the Settings icon in the header.
-2. Enter your OpenAI‑compatible base URL (e.g. `https://api.openai.com/v1`) and API key, then click "Save".
-3. Click "Sync from API" to fetch model list.
+2. Choose a provider:
+   - **OpenAI‑Compatible**: enter a base URL (e.g. `https://api.openai.com/v1`) and API key, then click "Save". Click "Sync from API" to fetch models.
+   - **Built-in AI (Chrome/Edge)**: no API key required. The app will check availability and, if needed, download the built-in model with progress feedback.
 
 ## Usage Tips
 

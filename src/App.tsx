@@ -1,3 +1,4 @@
+import { builtInAI } from "@built-in-ai/core";
 import { Textarea, UnstyledButton } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { type ModelMessage, streamText } from "ai";
@@ -25,11 +26,17 @@ import SettingsModal from "./components/SettingsModal";
 import TextCompletionView from "./components/TextCompletionView";
 import type { ConversationSnapshot } from "./tree/types";
 import { useConversationTree } from "./tree/useConversationTree";
-import type { AppView, ModelInfo } from "./types";
+import type {
+	AppView,
+	BuiltInAvailability,
+	ModelInfo,
+	ProviderKind,
+} from "./types";
 
 const baseURLKey = "iaslate_baseURL";
 const apiKeyKey = "iaslate_apiKey";
 const modelsKey = "iaslate_models";
+const providerKindKey = "iaslate_provider_kind";
 
 const defaultSystemPrompt = "You are a helpful assistant.";
 
@@ -38,6 +45,10 @@ const App = () => {
 	const [apiKey, setAPIKey] = useState("");
 	const [models, setModels] = useImmer<ModelInfo[]>([]);
 	const [activeModel, setActiveModel] = useImmer<string | null>(null);
+	const [providerKind, setProviderKind] =
+		useState<ProviderKind>("openai-compatible");
+	const [builtInAvailability, setBuiltInAvailability] =
+		useState<BuiltInAvailability>("unknown");
 
 	const openAIProvider = useMemo(
 		() =>
@@ -48,16 +59,54 @@ const App = () => {
 		[apiKey, baseURL],
 	);
 
+	const builtInStatusText = useMemo(() => {
+		if (providerKind !== "built-in") {
+			return undefined;
+		}
+		switch (builtInAvailability) {
+			case "downloading":
+				return "Built-in AI downloading...";
+			case "available":
+				return "Built-in AI ready";
+			case "downloadable":
+				return "Download model in Settings";
+			case "unavailable":
+				return "Built-in AI unavailable";
+			default:
+				return "Built-in AI";
+		}
+	}, [builtInAvailability, providerKind]);
+
+	const getBuiltInChatModel = useCallback(() => {
+		// Return a fresh model so each send can create a new session with the latest system prompt.
+		return builtInAI();
+	}, []);
+
+	const refreshBuiltInAvailability = useCallback(async () => {
+		try {
+			const availability = await builtInAI().availability();
+			setBuiltInAvailability(availability as BuiltInAvailability);
+		} catch (error) {
+			console.error(error);
+			setBuiltInAvailability("unavailable");
+		}
+	}, []);
+
 	const syncModels = useCallback(
 		async ({
 			baseURLOverride,
 			apiKeyOverride,
 			silent = false,
+			force = false,
 		}: {
 			baseURLOverride?: string;
 			apiKeyOverride?: string;
 			silent?: boolean;
+			force?: boolean;
 		} = {}) => {
+			if (!force && providerKind !== "openai-compatible") {
+				return [];
+			}
 			const targetBaseURL = (baseURLOverride ?? baseURL).trim();
 			const targetAPIKey = apiKeyOverride ?? apiKey;
 
@@ -97,11 +146,15 @@ const App = () => {
 				return [];
 			}
 		},
-		[activeModel, apiKey, baseURL, setActiveModel, setModels],
+		[activeModel, apiKey, baseURL, providerKind, setActiveModel, setModels],
 	);
 
 	useEffect(() => {
 		(async () => {
+			const storedProvider = await get<ProviderKind>(providerKindKey);
+			if (storedProvider) {
+				setProviderKind(storedProvider);
+			}
 			const storedBaseURL = await get<string>(baseURLKey);
 			if (storedBaseURL) {
 				setBaseURL(storedBaseURL);
@@ -128,6 +181,16 @@ const App = () => {
 			}
 		})();
 	}, [setActiveModel, setModels, syncModels]);
+
+	useEffect(() => {
+		void refreshBuiltInAvailability();
+	}, [refreshBuiltInAvailability]);
+
+	useEffect(() => {
+		if (providerKind === "built-in") {
+			setActiveModel(null);
+		}
+	}, [providerKind, setActiveModel]);
 
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [prompt, setPrompt] = useImmer("");
@@ -240,6 +303,12 @@ const App = () => {
 			textAbortControllerRef.current = null;
 		};
 	}, [view]);
+
+	useEffect(() => {
+		if (view === "text" && providerKind === "built-in") {
+			toast.error("Built-in AI supports chat only");
+		}
+	}, [providerKind, view]);
 
 	const streamControllersRef = useRef<Record<string, AbortController>>({});
 	const latestAssistantIdRef = useRef<string | undefined>(undefined);
@@ -377,6 +446,10 @@ const App = () => {
 		if (isTextGenerating) {
 			return;
 		}
+		if (providerKind !== "openai-compatible") {
+			toast.error("Built-in AI supports chat only");
+			return;
+		}
 		if (!activeModel) {
 			toast.error("Select a model before predicting");
 			return;
@@ -390,7 +463,7 @@ const App = () => {
 		setIsTextGenerating(true);
 		try {
 			const stream = streamText({
-				model: openAIProvider.completionModel(activeModel),
+				model: openAIProvider!.completionModel(activeModel!),
 				prompt: textContent,
 				temperature: 0.3,
 				abortSignal: abortController.signal,
@@ -426,14 +499,21 @@ const App = () => {
 	};
 
 	const handleSend = async () => {
-		if (!activeModel) {
-			toast.error("Select a model before sending");
+		const usingOpenAI = providerKind === "openai-compatible";
+		if (usingOpenAI) {
+			if (!activeModel) {
+				toast.error("Select a model before sending");
+				return;
+			}
+			if (!openAIProvider) {
+				toast.error("Set an API base URL before sending");
+				return;
+			}
+		} else if (builtInAvailability !== "available") {
+			toast.error("Download the built-in model in Settings before chatting");
 			return;
 		}
-		if (!openAIProvider) {
-			toast.error("Set an API base URL before sending");
-			return;
-		}
+		const builtInModel = usingOpenAI ? null : getBuiltInChatModel();
 		const trimmedPrompt = prompt.trim();
 		let resolvedParentId = activeTail() ?? activeTargetId;
 		if (!resolvedParentId) {
@@ -457,7 +537,9 @@ const App = () => {
 			}));
 		try {
 			const stream = streamText({
-				model: openAIProvider.chatModel(activeModel),
+				model: usingOpenAI
+					? openAIProvider!.chatModel(activeModel!)
+					: builtInModel!,
 				messages: contextMessages,
 				temperature: 0.3,
 				abortSignal: abortController.signal,
@@ -530,19 +612,28 @@ const App = () => {
 	const handleSettingsSave = async ({
 		baseURL: nextBaseURL,
 		apiKey: nextAPIKey,
+		providerKind: nextProviderKind,
 	}: {
 		baseURL: string;
 		apiKey: string;
+		providerKind: ProviderKind;
 	}) => {
+		setProviderKind(nextProviderKind);
+		await set(providerKindKey, nextProviderKind);
 		setBaseURL(nextBaseURL);
 		await set(baseURLKey, nextBaseURL);
 		setAPIKey(nextAPIKey);
 		await set(apiKeyKey, nextAPIKey);
-		await syncModels({
-			baseURLOverride: nextBaseURL,
-			apiKeyOverride: nextAPIKey,
-			silent: true,
-		});
+		if (nextProviderKind === "openai-compatible") {
+			await syncModels({
+				baseURLOverride: nextBaseURL,
+				apiKeyOverride: nextAPIKey,
+				silent: true,
+				force: true,
+			});
+		} else {
+			setActiveModel(null);
+		}
 		onSettingsClose();
 	};
 
@@ -560,6 +651,13 @@ const App = () => {
 				models={models}
 				activeModel={activeModel}
 				onModelChange={setActiveModel}
+				modelSelectorDisabled={providerKind !== "openai-compatible"}
+				modelPlaceholder={
+					providerKind === "openai-compatible"
+						? "Select a model"
+						: "Built-in AI (no model list)"
+				}
+				modelStatus={builtInStatusText}
 				view={view}
 				onViewChange={setView}
 				onClear={handleClearConversation}
@@ -685,6 +783,12 @@ const App = () => {
 				<TextCompletionView
 					value={textContent}
 					isGenerating={isTextGenerating}
+					isPredictDisabled={providerKind !== "openai-compatible"}
+					disabledReason={
+						providerKind !== "openai-compatible"
+							? "Built-in AI supports chat only"
+							: undefined
+					}
 					onChange={(value) => {
 						setTextContent(value);
 					}}
@@ -696,6 +800,9 @@ const App = () => {
 				open={isSettingsOpen}
 				baseURL={baseURL}
 				apiKey={apiKey}
+				providerKind={providerKind}
+				builtInAvailability={builtInAvailability}
+				onBuiltInAvailabilityChange={setBuiltInAvailability}
 				onClose={onSettingsClose}
 				onSave={handleSettingsSave}
 				onSyncModels={handleSyncModels}

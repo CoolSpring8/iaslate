@@ -3,6 +3,8 @@ import { Button, Textarea } from "@mantine/core";
 interface TextCompletionViewProps {
 	value: string;
 	isGenerating: boolean;
+	isPredictDisabled?: boolean;
+	disabledReason?: string;
 	onChange: (value: string) => void;
 	onPredict: () => void;
 	onCancel: () => void;
@@ -11,6 +13,8 @@ interface TextCompletionViewProps {
 const TextCompletionView = ({
 	value,
 	isGenerating,
+	isPredictDisabled = false,
+	disabledReason,
 	onChange,
 	onPredict,
 	onCancel,
@@ -38,6 +42,8 @@ const TextCompletionView = ({
 				size="md"
 				variant={isGenerating ? "light" : "filled"}
 				color={isGenerating ? "red" : "blue"}
+				disabled={isPredictDisabled && !isGenerating}
+				title={isPredictDisabled ? disabledReason : undefined}
 				onClick={isGenerating ? onCancel : onPredict}
 				leftSection={
 					<span
