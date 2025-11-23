@@ -3,7 +3,8 @@
 ## Project Structure & Module Organization
 
 - Source lives in `src/` (`index.tsx`, `App.tsx`, `index.css`). Build output goes to `dist/`.
-- Providers only in `index.tsx` (e.g., `MantineProvider`). `App.tsx` owns application state, while presentational pieces live in `src/components/`.
+- Providers only in `index.tsx` (e.g., `MantineProvider`). `App.tsx` coordinates views and settings; conversation state and snapshots live in the Zustand store (`src/tree/useConversationTree.ts`, `src/tree/types.ts`), and AI provider helpers live in `src/ai/openaiCompatible.ts`.
+- Components under `src/components/` include their own UI behavior (hover/edit states, popovers, menus) rather than being purely presentational.
 - Key config: `rsbuild.config.mjs`, `tsconfig.json`, `tailwind.config.js`, `postcss.config.js`, `biome.json`.
 
 ## Build, Test, and Development Commands
@@ -11,15 +12,20 @@
 - Install: `bun install` (use Bun for everything; a `bun.lock` is present).
 - Dev server: `bun dev` (Rsbuild) — starts hot‑reload and opens the browser.
 - Production build: `bun build-dist` — emits static assets to `dist/` (scripts/styles are inlined by Rsbuild config).
-- Preview production build: `bun preview` — serves the built output locally.
 
 ## Coding Style & Naming Conventions
 
-- Language: TypeScript + React 18; Tailwind for styling.
-- Indentation: one tab (Biome default). Keep code concise and self‑documenting.
+- Language: TypeScript + React 18; Mantine for UI; Tailwind for styling.
+- Indentation: one tab (Biome default) except for Markdown files where space indentation is used. Keep code concise and self‑documenting.
 - Formatting: use Biome. Run `bunx biome check --write .` to format and organize imports.
-- Components: prefer small presentational components in `src/components/`; keep core state and data flow inside `App.tsx`.
+- Type-checking: use tsc. Run `bunx tsc --noEmit` to check for type errors.
+- Components: keep UI logic close to the component (e.g., hover/edit toggles in `MessageItem`, menu interactions in `DiagramView`); shared conversation/tree logic belongs in the store.
 - CSS: prefer Tailwind utilities; add global styles in `src/index.css` only when necessary.
+
+## Providers & Capabilities
+
+- OpenAI-compatible: supports chat and text completion views.
+- Built-in AI (Chrome/Edge): chat-only; text view is disabled.
 
 ## Validation & DevTools MCP
 
