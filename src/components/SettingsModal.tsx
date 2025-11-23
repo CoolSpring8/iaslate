@@ -10,6 +10,8 @@ import {
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { useShallow } from "zustand/react/shallow";
+import { useSettingsStore } from "../state/useSettingsStore";
 import type { BuiltInAvailability, ProviderKind } from "../types";
 
 interface SettingsFormValues {
@@ -20,27 +22,29 @@ interface SettingsFormValues {
 
 interface SettingsModalProps {
 	open: boolean;
-	baseURL: string;
-	apiKey: string;
-	providerKind: ProviderKind;
-	builtInAvailability: BuiltInAvailability;
-	onBuiltInAvailabilityChange: (availability: BuiltInAvailability) => void;
 	onClose: () => void;
-	onSave: (values: SettingsFormValues) => Promise<void> | void;
-	onSyncModels: () => Promise<void> | void;
 }
 
-const SettingsModal = ({
-	open,
-	baseURL,
-	apiKey,
-	providerKind,
-	builtInAvailability,
-	onBuiltInAvailabilityChange,
-	onClose,
-	onSave,
-	onSyncModels,
-}: SettingsModalProps) => {
+const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
+	const {
+		baseURL,
+		apiKey,
+		providerKind,
+		builtInAvailability,
+		setBuiltInAvailability,
+		saveSettings,
+		syncModels,
+	} = useSettingsStore(
+		useShallow((state) => ({
+			baseURL: state.baseURL,
+			apiKey: state.apiKey,
+			providerKind: state.providerKind,
+			builtInAvailability: state.builtInAvailability,
+			setBuiltInAvailability: state.setBuiltInAvailability,
+			saveSettings: state.saveSettings,
+			syncModels: state.syncModels,
+		})),
+	);
 	const { register, handleSubmit, reset, watch, setValue } =
 		useForm<SettingsFormValues>({
 			defaultValues: {
@@ -59,22 +63,22 @@ const SettingsModal = ({
 		if (isDownloading) {
 			return;
 		}
-		onBuiltInAvailabilityChange("unknown");
+		setBuiltInAvailability("unknown");
 		setDownloadError(null);
 		try {
 			const model = builtInAI();
 			const availability = await model.availability();
-			onBuiltInAvailabilityChange(availability as BuiltInAvailability);
+			setBuiltInAvailability(availability as BuiltInAvailability);
 		} catch (error) {
 			console.error(error);
-			onBuiltInAvailabilityChange("unavailable");
+			setBuiltInAvailability("unavailable");
 			setDownloadError(
 				error instanceof Error
 					? error.message
 					: "Failed to check built-in model status",
 			);
 		}
-	}, [isDownloading, onBuiltInAvailabilityChange]);
+	}, [isDownloading, setBuiltInAvailability]);
 
 	const handleDownloadModel = useCallback(async () => {
 		if (
@@ -94,27 +98,27 @@ const SettingsModal = ({
 			const availability = (await model.availability()) as BuiltInAvailability;
 			switch (availability) {
 				case "unavailable": {
-					onBuiltInAvailabilityChange("unavailable");
+					setBuiltInAvailability("unavailable");
 					setDownloadError("Browser does not support built-in AI");
 					return;
 				}
 				case "downloading": {
-					onBuiltInAvailabilityChange("downloading");
+					setBuiltInAvailability("downloading");
 					return;
 				}
 				case "available": {
-					onBuiltInAvailabilityChange("available");
+					setBuiltInAvailability("available");
 					return;
 				}
 				case "downloadable": {
 					await model.createSessionWithProgress((progress) => {
 						setDownloadProgress(progress);
 					});
-					onBuiltInAvailabilityChange("available");
+					setBuiltInAvailability("available");
 					return;
 				}
 				default: {
-					onBuiltInAvailabilityChange("unavailable");
+					setBuiltInAvailability("unavailable");
 				}
 			}
 		} catch (error) {
@@ -124,17 +128,13 @@ const SettingsModal = ({
 					? error.message
 					: "Failed to download built-in model",
 			);
-			onBuiltInAvailabilityChange("downloadable");
+			setBuiltInAvailability("downloadable");
 		} finally {
 			downloadModelRef.current = null;
 			setIsDownloading(false);
 			setDownloadProgress(null);
 		}
-	}, [
-		builtInAvailability,
-		isDownloading,
-		onBuiltInAvailabilityChange,
-	]);
+	}, [builtInAvailability, isDownloading, setBuiltInAvailability]);
 
 	const builtInStatusLabel = useMemo(() => {
 		switch (builtInAvailability) {
@@ -191,7 +191,8 @@ const SettingsModal = ({
 		<Modal opened={open} onClose={onClose} title="Settings">
 			<form
 				onSubmit={handleSubmit(async (values) => {
-					await onSave(values);
+					await saveSettings(values);
+					onClose();
 				})}
 			>
 				<Select
@@ -235,7 +236,7 @@ const SettingsModal = ({
 						<p>Models</p>
 						<Button
 							onClick={() => {
-								void onSyncModels();
+								void syncModels();
 							}}
 						>
 							Sync from API

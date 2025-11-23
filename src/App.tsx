@@ -1,7 +1,6 @@
 import { builtInAI } from "@built-in-ai/core";
 import { useDisclosure } from "@mantine/hooks";
 import { type ModelMessage, streamText } from "ai";
-import { get, set } from "idb-keyval";
 import {
 	type ChangeEvent,
 	useCallback,
@@ -13,40 +12,45 @@ import {
 import { Toaster, toast } from "sonner";
 import { useImmer } from "use-immer";
 import { useShallow } from "zustand/react/shallow";
-import {
-	buildOpenAICompatibleProvider,
-	fetchOpenAICompatibleModels,
-} from "./ai/openaiCompatible";
+import { buildOpenAICompatibleProvider } from "./ai/openaiCompatible";
 import ChatView from "./components/ChatView";
 import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import SettingsModal from "./components/SettingsModal";
 import TextCompletionView from "./components/TextCompletionView";
-import type { ConversationSnapshot } from "./tree/types";
+import { useSettingsStore } from "./state/useSettingsStore";
 import { useConversationTree } from "./tree/useConversationTree";
-import type {
-	AppView,
-	BuiltInAvailability,
-	ModelInfo,
-	ProviderKind,
-} from "./types";
-
-const baseURLKey = "iaslate_baseURL";
-const apiKeyKey = "iaslate_apiKey";
-const modelsKey = "iaslate_models";
-const providerKindKey = "iaslate_provider_kind";
+import type { AppView, BuiltInAvailability, ProviderKind } from "./types";
+import { exportSnapshotToFile, parseSnapshotFile } from "./utils/snapshots";
 
 const defaultSystemPrompt = "You are a helpful assistant.";
 
 const App = () => {
-	const [baseURL, setBaseURL] = useState("");
-	const [apiKey, setAPIKey] = useState("");
-	const [models, setModels] = useImmer<ModelInfo[]>([]);
-	const [activeModel, setActiveModel] = useImmer<string | null>(null);
-	const [providerKind, setProviderKind] =
-		useState<ProviderKind>("openai-compatible");
-	const [builtInAvailability, setBuiltInAvailability] =
-		useState<BuiltInAvailability>("unknown");
+	const {
+		baseURL,
+		apiKey,
+		models,
+		activeModel,
+		setActiveModel,
+		providerKind,
+		builtInAvailability,
+		setBuiltInAvailability,
+		hydrate,
+		saveSettings,
+	} = useSettingsStore(
+		useShallow((state) => ({
+			baseURL: state.baseURL,
+			apiKey: state.apiKey,
+			models: state.models,
+			activeModel: state.activeModel,
+			setActiveModel: state.setActiveModel,
+			providerKind: state.providerKind,
+			builtInAvailability: state.builtInAvailability,
+			setBuiltInAvailability: state.setBuiltInAvailability,
+			hydrate: state.hydrate,
+			saveSettings: state.saveSettings,
+		})),
+	);
 
 	const openAIProvider = useMemo(
 		() =>
@@ -88,97 +92,11 @@ const App = () => {
 			console.error(error);
 			setBuiltInAvailability("unavailable");
 		}
-	}, []);
-
-	const syncModels = useCallback(
-		async ({
-			baseURLOverride,
-			apiKeyOverride,
-			silent = false,
-			force = false,
-		}: {
-			baseURLOverride?: string;
-			apiKeyOverride?: string;
-			silent?: boolean;
-			force?: boolean;
-		} = {}) => {
-			if (!force && providerKind !== "openai-compatible") {
-				return [];
-			}
-			const targetBaseURL = (baseURLOverride ?? baseURL).trim();
-			const targetAPIKey = apiKeyOverride ?? apiKey;
-
-			if (!targetBaseURL) {
-				if (!silent) {
-					toast.error("Set an API base URL before syncing");
-				}
-				return [];
-			}
-
-			try {
-				const fetchedModels = await fetchOpenAICompatibleModels({
-					baseURL: targetBaseURL,
-					apiKey: targetAPIKey,
-				});
-				setModels(fetchedModels);
-				await set(modelsKey, fetchedModels);
-				const currentModelStillValid = fetchedModels.some(
-					(model) => model.id === activeModel,
-				);
-				const nextModelId =
-					(currentModelStillValid && activeModel) || fetchedModels.at(0)?.id;
-				setActiveModel(nextModelId ?? null);
-				if (!silent) {
-					toast.success("Synced models");
-				}
-				return fetchedModels;
-			} catch (error) {
-				console.error(error);
-				if (!silent) {
-					const message =
-						error instanceof Error
-							? error.message
-							: "Failed to fetch models from API";
-					toast.error(message);
-				}
-				return [];
-			}
-		},
-		[activeModel, apiKey, baseURL, providerKind, setActiveModel, setModels],
-	);
+	}, [setBuiltInAvailability]);
 
 	useEffect(() => {
-		(async () => {
-			const storedProvider = await get<ProviderKind>(providerKindKey);
-			if (storedProvider) {
-				setProviderKind(storedProvider);
-			}
-			const storedBaseURL = await get<string>(baseURLKey);
-			if (storedBaseURL) {
-				setBaseURL(storedBaseURL);
-			}
-			const storedAPIKey = await get<string>(apiKeyKey);
-			if (storedAPIKey) {
-				setAPIKey(storedAPIKey);
-			}
-			const storedModels = await get<ModelInfo[]>(modelsKey);
-			if (storedModels?.length) {
-				setModels(storedModels);
-				const nextModelId = storedModels.at(0)?.id;
-				if (nextModelId) {
-					setActiveModel(nextModelId);
-				}
-				return;
-			}
-			if (storedBaseURL) {
-				await syncModels({
-					baseURLOverride: storedBaseURL,
-					apiKeyOverride: storedAPIKey,
-					silent: true,
-				});
-			}
-		})();
-	}, [setActiveModel, setModels, syncModels]);
+		void hydrate();
+	}, [hydrate]);
 
 	useEffect(() => {
 		void refreshBuiltInAvailability();
@@ -343,16 +261,7 @@ const App = () => {
 
 	const handleExport = () => {
 		const snapshot = exportSnapshot();
-		const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
-			type: "application/json",
-		});
-		const url = URL.createObjectURL(blob);
-		const anchor = document.createElement("a");
-		const safeTimestamp = snapshot.exportedAt.replace(/[:]/g, "-");
-		anchor.href = url;
-		anchor.download = `iaslate_tree_${safeTimestamp}.json`;
-		anchor.click();
-		URL.revokeObjectURL(url);
+		exportSnapshotToFile(snapshot);
 		toast.success("Exported conversation tree");
 	};
 
@@ -363,8 +272,7 @@ const App = () => {
 			return;
 		}
 		try {
-			const fileContents = await file.text();
-			const snapshot = JSON.parse(fileContents) as ConversationSnapshot;
+			const snapshot = await parseSnapshotFile(file);
 			abortActiveStreams();
 			resetComposerState();
 			importSnapshot(snapshot);
@@ -593,27 +501,12 @@ const App = () => {
 		apiKey: string;
 		providerKind: ProviderKind;
 	}) => {
-		setProviderKind(nextProviderKind);
-		await set(providerKindKey, nextProviderKind);
-		setBaseURL(nextBaseURL);
-		await set(baseURLKey, nextBaseURL);
-		setAPIKey(nextAPIKey);
-		await set(apiKeyKey, nextAPIKey);
-		if (nextProviderKind === "openai-compatible") {
-			await syncModels({
-				baseURLOverride: nextBaseURL,
-				apiKeyOverride: nextAPIKey,
-				silent: true,
-				force: true,
-			});
-		} else {
-			setActiveModel(null);
-		}
+		await saveSettings({
+			baseURL: nextBaseURL,
+			apiKey: nextAPIKey,
+			providerKind: nextProviderKind,
+		});
 		onSettingsClose();
-	};
-
-	const handleSyncModels = async () => {
-		await syncModels();
 	};
 
 	return (
@@ -692,17 +585,7 @@ const App = () => {
 					onCancel={handleTextCancel}
 				/>
 			)}
-			<SettingsModal
-				open={isSettingsOpen}
-				baseURL={baseURL}
-				apiKey={apiKey}
-				providerKind={providerKind}
-				builtInAvailability={builtInAvailability}
-				onBuiltInAvailabilityChange={setBuiltInAvailability}
-				onClose={onSettingsClose}
-				onSave={handleSettingsSave}
-				onSyncModels={handleSyncModels}
-			/>
+			<SettingsModal open={isSettingsOpen} onClose={onSettingsClose} />
 			<Toaster />
 		</div>
 	);
