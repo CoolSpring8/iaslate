@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 
 - Source lives in `src/` (`index.tsx`, `App.tsx`, `index.css`). Build output goes to `dist/`.
-- Providers only in `index.tsx` (e.g., `MantineProvider`). `App.tsx` coordinates views and settings; conversation state and snapshots live in the Zustand store (`src/tree/useConversationTree.ts`, `src/tree/types.ts`), and AI provider helpers live in `src/ai/openaiCompatible.ts`.
+- Providers only in `index.tsx` (e.g., `MantineProvider`). Settings and provider state live in a shared store (`src/state/useSettingsStore.ts`); conversation state and snapshots live in the tree store (`src/tree/useConversationTree.ts`, `src/tree/types.ts`), and AI provider helpers live in `src/ai/openaiCompatible.ts`.
 - Components under `src/components/` include their own UI behavior (hover/edit states, popovers, menus) rather than being purely presentational.
 - Key config: `rsbuild.config.mjs`, `tsconfig.json`, `tailwind.config.js`, `postcss.config.js`, `biome.json`.
 
