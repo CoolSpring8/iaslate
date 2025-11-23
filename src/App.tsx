@@ -1,5 +1,4 @@
 import { builtInAI } from "@built-in-ai/core";
-import { Textarea, UnstyledButton } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { type ModelMessage, streamText } from "ai";
 import { get, set } from "idb-keyval";
@@ -12,16 +11,15 @@ import {
 	useState,
 } from "react";
 import { Toaster, toast } from "sonner";
-import { twJoin } from "tailwind-merge";
 import { useImmer } from "use-immer";
 import { useShallow } from "zustand/react/shallow";
 import {
 	buildOpenAICompatibleProvider,
 	fetchOpenAICompatibleModels,
 } from "./ai/openaiCompatible";
+import ChatView from "./components/ChatView";
 import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
-import MessageItem from "./components/MessageItem";
 import SettingsModal from "./components/SettingsModal";
 import TextCompletionView from "./components/TextCompletionView";
 import type { ConversationSnapshot } from "./tree/types";
@@ -193,7 +191,6 @@ const App = () => {
 	}, [providerKind, setActiveModel]);
 
 	const [isGenerating, setIsGenerating] = useState(false);
-	const [prompt, setPrompt] = useImmer("");
 	const [textContent, setTextContent] = useImmer("");
 	const [isTextGenerating, setIsTextGenerating] = useState(false);
 	const [isSettingsOpen, { open: onSettingsOpen, close: onSettingsClose }] =
@@ -202,7 +199,8 @@ const App = () => {
 		undefined,
 	);
 	const [view, setView] = useState<AppView>("chat");
-	const isComposing = useRef(false);
+	const [isPromptDirty, setIsPromptDirty] = useState(false);
+	const [composerResetSignal, setComposerResetSignal] = useState(0);
 	const {
 		nodes: treeNodes,
 		edges: treeEdges,
@@ -259,7 +257,7 @@ const App = () => {
 		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
 			const hasSessionState =
 				isGenerating ||
-				prompt.trim().length > 0 ||
+				isPromptDirty ||
 				isTextGenerating ||
 				textContent.trim().length > 0 ||
 				typeof editingNodeId !== "undefined" ||
@@ -278,7 +276,7 @@ const App = () => {
 		};
 	}, [
 		isGenerating,
-		prompt,
+		isPromptDirty,
 		isTextGenerating,
 		textContent,
 		editingNodeId,
@@ -329,7 +327,8 @@ const App = () => {
 			setNodeStatus(editingNodeId, "final");
 		}
 		setEditingNodeId(undefined);
-		setPrompt("");
+		setComposerResetSignal((value) => value + 1);
+		setIsPromptDirty(false);
 	};
 
 	const handleClearConversation = () => {
@@ -400,10 +399,9 @@ const App = () => {
 		void cloneNode(nodeId);
 	};
 
-	const handleEditMessage = (nodeId: string, content: string) => {
+	const handleEditMessage = (nodeId: string) => {
 		setNodeStatus(nodeId, "draft");
 		setEditingNodeId(nodeId);
-		setPrompt(content);
 	};
 
 	const handleDeleteMessage = (nodeId: string) => {
@@ -498,7 +496,7 @@ const App = () => {
 		setIsTextGenerating(false);
 	};
 
-	const handleSend = async () => {
+	const handleSend = async (promptText: string) => {
 		const usingOpenAI = providerKind === "openai-compatible";
 		if (usingOpenAI) {
 			if (!activeModel) {
@@ -514,14 +512,13 @@ const App = () => {
 			return;
 		}
 		const builtInModel = usingOpenAI ? null : getBuiltInChatModel();
-		const trimmedPrompt = prompt.trim();
+		const trimmedPrompt = promptText.trim();
 		let resolvedParentId = activeTail() ?? activeTargetId;
 		if (!resolvedParentId) {
 			resolvedParentId = createSystemMessage(defaultSystemPrompt);
 		}
 		if (trimmedPrompt.length > 0) {
 			resolvedParentId = createUserAfter(resolvedParentId, trimmedPrompt);
-			setPrompt("");
 		}
 		const assistantId = createAssistantAfter(resolvedParentId);
 		setNodeStatus(assistantId, "streaming");
@@ -574,39 +571,17 @@ const App = () => {
 		}
 	};
 
-	const handleFinishEdit = () => {
-		if (!editingNodeId) {
-			return;
-		}
-		const replacementId = replaceNodeWithEditedClone(editingNodeId, {
-			text: prompt,
+	const handleFinishEdit = (nodeId: string, text: string) => {
+		const replacementId = replaceNodeWithEditedClone(nodeId, {
+			text,
 		});
 		if (!replacementId) {
 			return;
 		}
-		if (activeTargetId === editingNodeId) {
+		if (activeTargetId === nodeId) {
 			setActiveTarget(replacementId);
 		}
 		resetComposerState();
-	};
-
-	const handleSubmit = () => {
-		if (isGenerating) {
-			const currentAssistantId = latestAssistantIdRef.current;
-			if (currentAssistantId) {
-				streamControllersRef.current[currentAssistantId]?.abort();
-			}
-			setIsGenerating(false);
-			return;
-		}
-		if (editingNodeId) {
-			handleFinishEdit();
-			return;
-		}
-		void handleSend().catch((error) => {
-			console.error(error);
-			toast.error("Failed to generate response");
-		});
 	};
 
 	const handleSettingsSave = async ({
@@ -641,10 +616,6 @@ const App = () => {
 		await syncModels();
 	};
 
-	const editingMessage = editingNodeId
-		? chatMessages.find((message) => message._metadata.uuid === editingNodeId)
-		: undefined;
-
 	return (
 		<div className="flex flex-col h-screen">
 			<Header
@@ -675,102 +646,27 @@ const App = () => {
 				tabIndex={-1}
 			/>
 			{view === "chat" ? (
-				<>
-					<div
-						className="flex-1 overflow-y-auto px-4 py-2"
-						onDrop={async (event) => {
-							event.preventDefault();
-							if (event.dataTransfer.items) {
-								for (const item of event.dataTransfer.items) {
-									if (item.kind === "file") {
-										const file = item.getAsFile();
-										if (file) {
-											const content = await file.text();
-											setPrompt((draft) => draft + content);
-										}
-									}
-								}
-							}
-						}}
-						onDragOver={(event) => {
-							event.preventDefault();
-						}}
-					>
-						{chatMessages.map((message, index) => (
-							<MessageItem
-								key={message._metadata.uuid}
-								message={message}
-								isEditing={editingNodeId === message._metadata.uuid}
-								isLast={index === chatMessages.length - 1}
-								isGenerating={isGenerating}
-								onEdit={() =>
-									handleEditMessage(message._metadata.uuid, message.content)
-								}
-								onDelete={() => handleDeleteMessage(message._metadata.uuid)}
-								onDetach={() => handleDetachMessage(message._metadata.uuid)}
-							/>
-						))}
-					</div>
-					<div className="relative px-4 py-2">
-						<div className="flex items-center">
-							<Textarea
-								className="w-full"
-								minRows={1}
-								maxRows={5}
-								placeholder="Type your message..."
-								value={prompt}
-								onChange={(event) => {
-									setPrompt(event.target.value);
-								}}
-								onCompositionStart={() => {
-									isComposing.current = true;
-								}}
-								onCompositionEnd={() => {
-									isComposing.current = false;
-								}}
-								onKeyDown={(event) => {
-									if (
-										event.key === "Enter" &&
-										!event.shiftKey &&
-										!event.nativeEvent.isComposing &&
-										!isComposing.current
-									) {
-										event.preventDefault();
-										handleSubmit();
-									}
-								}}
-							/>
-							<UnstyledButton
-								className="ml-2 border rounded-full w-8 h-8 flex items-center justify-center"
-								onClick={handleSubmit}
-							>
-								<div
-									className={twJoin(
-										"w-4 h-4",
-										editingNodeId
-											? "i-lucide-check"
-											: "i-lucide-send-horizontal",
-										isGenerating ? "animate-spin" : "",
-									)}
-								/>
-							</UnstyledButton>
-						</div>
-						{editingMessage && (
-							<div className="absolute left-4 -top-8 h-8 w-[calc(100%-2rem)] rounded bg-orange-300 p-2 flex items-center text-slate-700 text-sm">
-								<div className="i-lucide-edit flex-none" />
-								<p className="ml-1 line-clamp-1">
-									Editing: {editingMessage.content}
-								</p>
-								<UnstyledButton
-									className="i-lucide-x ml-auto flex-none"
-									onClick={() => {
-										resetComposerState();
-									}}
-								/>
-							</div>
-						)}
-					</div>
-				</>
+				<div className="flex-1 min-h-0">
+					<ChatView
+						messages={chatMessages}
+						isGenerating={isGenerating}
+						editingMessageId={editingNodeId}
+						onSend={(value) =>
+							void handleSend(value).catch((error) => {
+								console.error(error);
+								toast.error("Failed to generate response");
+							})
+						}
+						onStop={abortActiveStreams}
+						onDeleteMessage={handleDeleteMessage}
+						onDetachMessage={handleDetachMessage}
+						onEditStart={handleEditMessage}
+						onEditSubmit={handleFinishEdit}
+						onEditCancel={resetComposerState}
+						onPromptDirtyChange={setIsPromptDirty}
+						resetSignal={composerResetSignal}
+					/>
+				</div>
 			) : view === "diagram" ? (
 				<div className="flex-1 overflow-hidden px-2 py-2">
 					<DiagramView
