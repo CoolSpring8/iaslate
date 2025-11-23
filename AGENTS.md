@@ -21,10 +21,11 @@
 - Components: prefer small presentational components in `src/components/`; keep core state and data flow inside `App.tsx`.
 - CSS: prefer Tailwind utilities; add global styles in `src/index.css` only when necessary.
 
-## Testing Guidelines
+## Validation & DevTools MCP
 
-- No test runner is configured. Include clear manual verification steps in PRs; optional minimal tests (`*.test.ts(x)`) can land in a follow‑up.
-- Verify `bun build-dist` and core flows in README “Usage Tips”.
+- Assume `bun dev` is already running locally; don’t start it from the agent unless explicitly asked.
+- Use Chrome DevTools MCP to navigate to `http://localhost:8080/` to check the UI after changes.
+- Avoid shell curls to localhost unless the user explicitly requests; rely on MCP interactions for UI checks.
 
 ## Commit & Pull Request Guidelines
 
