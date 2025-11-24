@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { createWithEqualityFn } from "zustand/traditional";
-import type { Message } from "../types";
+import type { Message, MessageContent, MessageContentPart } from "../types";
 import type {
 	ConversationSnapshot,
 	ConversationTree,
@@ -22,7 +22,10 @@ interface TreeState extends ConversationTree {
 	findPredecessor: (toId: NodeID) => NodeID | undefined;
 	createSystemMessage: (text: string) => NodeID;
 	activeTail: () => NodeID | undefined;
-	createUserAfter: (parentId: NodeID | undefined, text: string) => NodeID;
+	createUserAfter: (
+		parentId: NodeID | undefined,
+		content: MessageContent,
+	) => NodeID;
 	createAssistantAfter: (parentId: NodeID) => NodeID;
 	appendToNode: (
 		nodeId: NodeID,
@@ -39,7 +42,7 @@ interface TreeState extends ConversationTree {
 	cloneNode: (sourceId: NodeID) => NodeID | undefined;
 	replaceNodeWithEditedClone: (
 		nodeId: NodeID,
-		updates: { text?: string; reasoningContent?: string },
+		updates: { content?: MessageContent; reasoningContent?: string },
 	) => NodeID | undefined;
 	removeNode: (id: NodeID) => void;
 	reset: () => void;
@@ -145,10 +148,34 @@ const isAncestor = (nodes: NodeMap, ancestorId: NodeID, nodeId: NodeID) => {
 
 const toMessage = (node: TreeNode): Message => ({
 	role: node.role,
-	content: node.text,
+	content: node.content,
 	reasoning_content: node.reasoningContent,
 	_metadata: { uuid: node.id },
 });
+
+const appendTextToContent = (
+	content: MessageContent,
+	delta: string | undefined,
+): MessageContent => {
+	if (typeof delta !== "string") {
+		return content;
+	}
+	if (typeof content === "string") {
+		return `${content}${delta}`;
+	}
+	const last = content[content.length - 1];
+	if (last && last.type === "text") {
+		const nextTail: MessageContentPart = {
+			...last,
+			text: `${last.text}${delta}`,
+		};
+		return [...content.slice(0, -1), nextTail];
+	}
+	return [
+		...content,
+		{ type: "text", text: delta } satisfies MessageContentPart,
+	];
+};
 
 const buildPathIds = (nodes: NodeMap, target: NodeID): NodeID[] => {
 	if (!nodes[target]) {
@@ -191,7 +218,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					nodes[id] = {
 						id,
 						role,
-						text: message.content,
+						content: message.content,
 						reasoningContent: message.reasoning_content,
 						createdAt: existing?.createdAt ?? Date.now(),
 						status: existing?.status,
@@ -217,10 +244,10 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 		compilePathTo: (target) => {
 			const { nodes } = get();
 			const pathIds = buildPathIds(nodes, target);
-			return pathIds.map((id) => {
-				const node = nodes[id];
-				return toMessage(node);
-			});
+			return pathIds
+				.map((id) => nodes[id])
+				.filter(Boolean)
+				.map((node) => toMessage(node as TreeNode));
 		},
 		compileActive: () => {
 			const { getActivePathIds, nodes } = get();
@@ -228,7 +255,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 			return pathIds
 				.map((id) => nodes[id])
 				.filter(Boolean)
-				.map((node) => toMessage(node));
+				.map((node) => toMessage(node as TreeNode));
 		},
 		tracePathIds: (target) => {
 			const { nodes } = get();
@@ -248,7 +275,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					[newId]: {
 						id: newId,
 						role: "system",
-						text,
+						content: text,
 						createdAt: Date.now(),
 						parentId: null,
 					},
@@ -262,9 +289,10 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 			if (path.length === 0) {
 				return undefined;
 			}
-			return path[path.length - 1]._metadata.uuid;
+			const latest = path[path.length - 1];
+			return latest ? latest._metadata.uuid : undefined;
 		},
-		createUserAfter: (parentId, text) => {
+		createUserAfter: (parentId, content) => {
 			const newId = uuidv4();
 			set((state) => {
 				const safeParent = parentId && state.nodes[parentId] ? parentId : null;
@@ -273,7 +301,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					[newId]: {
 						id: newId,
 						role: "user",
-						text,
+						content,
 						createdAt: Date.now(),
 						parentId: safeParent,
 					},
@@ -293,7 +321,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					[newId]: {
 						id: newId,
 						role: "assistant",
-						text: "",
+						content: "",
 						reasoningContent: undefined,
 						createdAt: Date.now(),
 						status: "draft",
@@ -312,8 +340,8 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 				}
 				const nextContent =
 					typeof delta.content === "string"
-						? `${node.text}${delta.content}`
-						: node.text;
+						? appendTextToContent(node.content, delta.content)
+						: node.content;
 				const nextReasoning =
 					typeof delta.reasoning === "string"
 						? `${node.reasoningContent ?? ""}${delta.reasoning}`
@@ -322,7 +350,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					...state.nodes,
 					[nodeId]: {
 						...node,
-						text: nextContent,
+						content: nextContent,
 						reasoningContent: nextReasoning,
 					},
 				};
@@ -338,7 +366,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					...state.nodes,
 					[nodeId]: {
 						...node,
-						text,
+						content: text,
 					},
 				};
 				return { nodes } satisfies Partial<TreeState>;
@@ -398,7 +426,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					[newId]: {
 						id: newId,
 						role: source.role,
-						text: source.text,
+						content: source.content,
 						reasoningContent: source.reasoningContent,
 						createdAt: Date.now(),
 						parentId: source.parentId ?? null,
@@ -422,7 +450,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 				nodes[newId] = {
 					...target,
 					id: newId,
-					text: updates.text ?? target.text,
+					content: updates.content ?? target.content,
 					reasoningContent: updates.reasoningContent ?? target.reasoningContent,
 					parentId: target.parentId ?? null,
 					createdAt: Date.now(),
@@ -509,7 +537,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 				nodes[id] = {
 					id,
 					role: coerceRole(node.role),
-					text: node.text ?? "",
+					content: node.content ?? "",
 					reasoningContent: node.reasoningContent,
 					createdAt,
 					status: node.status,

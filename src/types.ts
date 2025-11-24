@@ -6,9 +6,15 @@ export interface MessageMetadata {
 	uuid: string;
 }
 
+export type MessageContentPart =
+	| { type: "text"; text: string }
+	| { type: "image"; image: string; mimeType?: string };
+
+export type MessageContent = string | MessageContentPart[];
+
 export interface Message {
 	role: "system" | "user" | "assistant" | "tool";
-	content: string;
+	content: MessageContent;
 	reasoning_content?: string;
 	_metadata: MessageMetadata;
 }

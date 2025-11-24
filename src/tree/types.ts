@@ -5,7 +5,7 @@ export type EdgeKind = "sequence";
 export interface TreeNode {
 	id: NodeID;
 	role: "system" | "user" | "assistant" | "tool";
-	text: string;
+	content: import("../types").MessageContent;
 	reasoningContent?: string;
 	createdAt: number;
 	status?: "draft" | "streaming" | "final" | "error";

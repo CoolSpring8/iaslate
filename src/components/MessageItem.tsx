@@ -3,7 +3,7 @@ import { useState } from "react";
 import Markdown from "react-markdown";
 import { toast } from "sonner";
 import { twJoin } from "tailwind-merge";
-import type { Message } from "../types";
+import type { Message, MessageContentPart } from "../types";
 
 interface MessageItemProps {
 	message: Message;
@@ -28,10 +28,21 @@ const MessageItem = ({
 	const [hasBeenClicked, setHasBeenClicked] = useState(false);
 	const [isReasoningExpanded, setIsReasoningExpanded] = useState(true);
 	const reasoningText = message.reasoning_content?.trim();
+	const contentParts: MessageContentPart[] =
+		typeof message.content === "string"
+			? message.content.length > 0
+				? [{ type: "text", text: message.content } satisfies MessageContentPart]
+				: []
+			: message.content;
 
 	const handleCopy = async () => {
 		try {
-			await navigator.clipboard.writeText(message.content);
+			const copyText = contentParts
+				.map((part) =>
+					part.type === "text" ? part.text : "[image attachment]",
+				)
+				.join("\n\n");
+			await navigator.clipboard.writeText(copyText);
 			toast("Copied to clipboard", {
 				position: "top-center",
 			});
@@ -121,9 +132,31 @@ const MessageItem = ({
 					</div>
 				)}
 				<div className="twp prose prose-p:whitespace-pre-wrap">
-					<Markdown remarkPlugins={[]}>
-						{`${message.content}${isLast && isGenerating ? "▪️" : ""}`}
-					</Markdown>
+					{contentParts.map((part, index) =>
+						part.type === "text" ? (
+							<Markdown
+								key={`${message._metadata.uuid}-text-${index}`}
+								remarkPlugins={[]}
+							>
+								{`${part.text}${
+									isLast && isGenerating && index === contentParts.length - 1
+										? "▪️"
+										: ""
+								}`}
+							</Markdown>
+						) : (
+							<div
+								key={`${message._metadata.uuid}-image-${index}`}
+								className="mt-2"
+							>
+								<img
+									src={part.image}
+									alt="User provided"
+									className="max-h-64 rounded border"
+								/>
+							</div>
+						),
+					)}
 				</div>
 			</div>
 		</div>
