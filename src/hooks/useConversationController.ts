@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { sendMessage } from "../ai/sendMessage";
@@ -24,8 +24,6 @@ export const useConversationController = ({
 	const [composerResetSignal, setComposerResetSignal] = useState(0);
 	const [isPromptDirty, setIsPromptDirty] = useState(false);
 	const {
-		nodes,
-		edges,
 		activeTargetId,
 		setActiveTarget,
 		createSystemMessage,
@@ -45,8 +43,6 @@ export const useConversationController = ({
 		importSnapshot,
 	} = useConversationTree(
 		useShallow((state) => ({
-			nodes: state.nodes,
-			edges: state.edges,
 			activeTargetId: state.activeTargetId,
 			setActiveTarget: state.setActiveTarget,
 			createSystemMessage: state.createSystemMessage,
@@ -67,13 +63,32 @@ export const useConversationController = ({
 		})),
 	);
 
-	const chatMessages = useMemo<Message[]>(() => {
-		const target = activeTargetId ?? activeTail();
-		if (!target) {
-			return [];
+	const areMessagesEqual = useCallback((next: Message[], prev: Message[]) => {
+		if (next === prev) {
+			return true;
 		}
-		return compilePathTo(target);
-	}, [activeTargetId, activeTail, compilePathTo, edges, nodes]);
+		if (next.length !== prev.length) {
+			return false;
+		}
+		for (let index = 0; index < next.length; index++) {
+			const a = next[index];
+			const b = prev[index];
+			if (
+				a._metadata.uuid !== b._metadata.uuid ||
+				a.role !== b.role ||
+				a.content !== b.content ||
+				a.reasoning_content !== b.reasoning_content
+			) {
+				return false;
+			}
+		}
+		return true;
+	}, []);
+
+	const chatMessages = useConversationTree(
+		useCallback((state) => state.compileActive(), []),
+		areMessagesEqual,
+	);
 
 	const abortActiveStreams = useCallback(() => {
 		streamManager.abortAll();

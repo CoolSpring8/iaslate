@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { create } from "zustand";
+import { createWithEqualityFn } from "zustand/traditional";
 import type { Message } from "../types";
 import type {
 	ConversationSnapshot,
@@ -170,360 +170,362 @@ const buildPathIds = (nodes: NodeMap, target: NodeID): NodeID[] => {
 	return path;
 };
 
-export const useConversationTree = create<TreeState>((set, get) => ({
-	nodes: {},
-	edges: {},
-	roots: [],
-	activeTargetId: undefined,
-	isEmpty: () => Object.keys(get().nodes).length === 0,
-	syncLinearTail: (messages) =>
-		set((state) => {
-			if (messages.length === 0) {
-				return state;
-			}
-			const nodes = { ...state.nodes } satisfies NodeMap;
-			let parentId: NodeID | null = null;
-			for (const message of messages) {
-				const id = message._metadata.uuid;
-				const role = coerceRole(message.role);
-				const existing = nodes[id];
-				nodes[id] = {
-					id,
-					role,
-					text: message.content,
-					reasoningContent: message.reasoning_content,
-					createdAt: existing?.createdAt ?? Date.now(),
-					status: existing?.status,
-					parentId,
-				} satisfies TreeNode;
-				parentId = id;
-			}
-			return withDerivedTree(nodes);
-		}),
-	setActiveTarget: (id) => set({ activeTargetId: id }),
-	splitBranch: (childId) =>
-		set((state) => {
-			const target = state.nodes[childId];
-			if (!target || !target.parentId) {
-				return state;
-			}
-			const nodes: NodeMap = {
-				...state.nodes,
-				[childId]: { ...target, parentId: null },
-			};
-			return withDerivedTree(nodes);
-		}),
-	compilePathTo: (target) => {
-		const { nodes } = get();
-		const pathIds = buildPathIds(nodes, target);
-		return pathIds.map((id) => {
-			const node = nodes[id];
-			return toMessage(node);
-		});
-	},
-	compileActive: () => {
-		const { getActivePathIds, nodes } = get();
-		const pathIds = getActivePathIds();
-		return pathIds.map((id) => {
-			const node = nodes[id];
-			return toMessage(node);
-		});
-	},
-	tracePathIds: (target) => {
-		const { nodes } = get();
-		return buildPathIds(nodes, target);
-	},
-	getActivePathIds: () => {
-		const { nodes, activeTargetId } = get();
-		const fallbackId = activeTargetId ?? pickNewestLeafId(nodes);
-		return fallbackId ? buildPathIds(nodes, fallbackId) : [];
-	},
-	findPredecessor: (toId) => get().nodes[toId]?.parentId ?? undefined,
-	createSystemMessage: (text) => {
-		const newId = uuidv4();
-		set((state) => {
-			const nodes: NodeMap = {
-				...state.nodes,
-				[newId]: {
-					id: newId,
-					role: "system",
-					text,
-					createdAt: Date.now(),
-					parentId: null,
-				},
-			};
-			return withDerivedTree(nodes);
-		});
-		return newId;
-	},
-	activeTail: () => {
-		const path = get().compileActive();
-		if (path.length === 0) {
-			return undefined;
-		}
-		return path[path.length - 1]._metadata.uuid;
-	},
-	createUserAfter: (parentId, text) => {
-		const newId = uuidv4();
-		set((state) => {
-			const safeParent = parentId && state.nodes[parentId] ? parentId : null;
-			const nodes: NodeMap = {
-				...state.nodes,
-				[newId]: {
-					id: newId,
-					role: "user",
-					text,
-					createdAt: Date.now(),
-					parentId: safeParent,
-				},
-			};
-			return withDerivedTree(nodes);
-		});
-		return newId;
-	},
-	createAssistantAfter: (parentId) => {
-		if (!get().nodes[parentId]) {
-			throw new Error(`Parent node ${parentId} not found`);
-		}
-		const newId = uuidv4();
-		set((state) => {
-			const nodes: NodeMap = {
-				...state.nodes,
-				[newId]: {
-					id: newId,
-					role: "assistant",
-					text: "",
-					reasoningContent: undefined,
-					createdAt: Date.now(),
-					status: "draft",
-					parentId,
-				},
-			};
-			return withDerivedTree(nodes);
-		});
-		return newId;
-	},
-	appendToNode: (nodeId, delta) =>
-		set((state) => {
-			const node = state.nodes[nodeId];
-			if (!node) {
-				return state;
-			}
-			const nextContent =
-				typeof delta.content === "string"
-					? `${node.text}${delta.content}`
-					: node.text;
-			const nextReasoning =
-				typeof delta.reasoning === "string"
-					? `${node.reasoningContent ?? ""}${delta.reasoning}`
-					: node.reasoningContent;
-			const nodes: NodeMap = {
-				...state.nodes,
-				[nodeId]: {
-					...node,
-					text: nextContent,
-					reasoningContent: nextReasoning,
-				},
-			};
-			return { nodes } satisfies Partial<TreeState>;
-		}),
-	setNodeText: (nodeId, text) =>
-		set((state) => {
-			const node = state.nodes[nodeId];
-			if (!node) {
-				return state;
-			}
-			const nodes: NodeMap = {
-				...state.nodes,
-				[nodeId]: {
-					...node,
-					text,
-				},
-			};
-			return { nodes } satisfies Partial<TreeState>;
-		}),
-	setNodeStatus: (nodeId, status) =>
-		set((state) => {
-			const node = state.nodes[nodeId];
-			if (!node) {
-				return state;
-			}
-			const nodes: NodeMap = {
-				...state.nodes,
-				[nodeId]: {
-					...node,
-					status,
-				},
-			};
-			return { nodes } satisfies Partial<TreeState>;
-		}),
-	predecessorOf: (nodeId) => get().nodes[nodeId]?.parentId ?? undefined,
-	canReparent: (parentId, childId) => {
-		const { nodes } = get();
-		if (!nodes[parentId] || !nodes[childId] || parentId === childId) {
-			return false;
-		}
-		return !isAncestor(nodes, childId, parentId);
-	},
-	reparentNode: (target, nextParent) =>
-		set((state) => {
-			if (!state.nodes[target] || !state.nodes[nextParent]) {
-				return state;
-			}
-			if (
-				nextParent === target ||
-				isAncestor(state.nodes, target, nextParent)
-			) {
-				return state;
-			}
-			const nodes: NodeMap = {
-				...state.nodes,
-				[target]: {
-					...state.nodes[target],
-					parentId: nextParent,
-				},
-			};
-			return withDerivedTree(nodes);
-		}),
-	cloneNode: (sourceId) => {
-		const source = get().nodes[sourceId];
-		if (!source) {
-			return undefined;
-		}
-		const newId = uuidv4();
-		set((state) => {
-			const nodes: NodeMap = {
-				...state.nodes,
-				[newId]: {
-					id: newId,
-					role: source.role,
-					text: source.text,
-					reasoningContent: source.reasoningContent,
-					createdAt: Date.now(),
-					parentId: source.parentId ?? null,
-					status: source.status,
-				},
-			};
-			return withDerivedTree(nodes);
-		});
-		return newId;
-	},
-	replaceNodeWithEditedClone: (nodeId, updates) => {
-		let replacementId: NodeID | undefined;
-		set((state) => {
-			const target = state.nodes[nodeId];
-			if (!target) {
-				return state;
-			}
-			const nodes: NodeMap = { ...state.nodes };
+export const useConversationTree = createWithEqualityFn<TreeState>(
+	(set, get) => ({
+		nodes: {},
+		edges: {},
+		roots: [],
+		activeTargetId: undefined,
+		isEmpty: () => Object.keys(get().nodes).length === 0,
+		syncLinearTail: (messages) =>
+			set((state) => {
+				if (messages.length === 0) {
+					return state;
+				}
+				const nodes = { ...state.nodes } satisfies NodeMap;
+				let parentId: NodeID | null = null;
+				for (const message of messages) {
+					const id = message._metadata.uuid;
+					const role = coerceRole(message.role);
+					const existing = nodes[id];
+					nodes[id] = {
+						id,
+						role,
+						text: message.content,
+						reasoningContent: message.reasoning_content,
+						createdAt: existing?.createdAt ?? Date.now(),
+						status: existing?.status,
+						parentId,
+					} satisfies TreeNode;
+					parentId = id;
+				}
+				return withDerivedTree(nodes);
+			}),
+		setActiveTarget: (id) => set({ activeTargetId: id }),
+		splitBranch: (childId) =>
+			set((state) => {
+				const target = state.nodes[childId];
+				if (!target || !target.parentId) {
+					return state;
+				}
+				const nodes: NodeMap = {
+					...state.nodes,
+					[childId]: { ...target, parentId: null },
+				};
+				return withDerivedTree(nodes);
+			}),
+		compilePathTo: (target) => {
+			const { nodes } = get();
+			const pathIds = buildPathIds(nodes, target);
+			return pathIds.map((id) => {
+				const node = nodes[id];
+				return toMessage(node);
+			});
+		},
+		compileActive: () => {
+			const { getActivePathIds, nodes } = get();
+			const pathIds = getActivePathIds();
+			return pathIds
+				.map((id) => nodes[id])
+				.filter(Boolean)
+				.map((node) => toMessage(node));
+		},
+		tracePathIds: (target) => {
+			const { nodes } = get();
+			return buildPathIds(nodes, target);
+		},
+		getActivePathIds: () => {
+			const { nodes, activeTargetId } = get();
+			const fallbackId = activeTargetId ?? pickNewestLeafId(nodes);
+			return fallbackId ? buildPathIds(nodes, fallbackId) : [];
+		},
+		findPredecessor: (toId) => get().nodes[toId]?.parentId ?? undefined,
+		createSystemMessage: (text) => {
 			const newId = uuidv4();
-			replacementId = newId;
-			nodes[newId] = {
-				...target,
-				id: newId,
-				text: updates.text ?? target.text,
-				reasoningContent: updates.reasoningContent ?? target.reasoningContent,
-				parentId: target.parentId ?? null,
-				createdAt: Date.now(),
-				status: "final",
-			};
-			for (const child of Object.values(nodes)) {
-				if (child.parentId === nodeId) {
+			set((state) => {
+				const nodes: NodeMap = {
+					...state.nodes,
+					[newId]: {
+						id: newId,
+						role: "system",
+						text,
+						createdAt: Date.now(),
+						parentId: null,
+					},
+				};
+				return withDerivedTree(nodes);
+			});
+			return newId;
+		},
+		activeTail: () => {
+			const path = get().compileActive();
+			if (path.length === 0) {
+				return undefined;
+			}
+			return path[path.length - 1]._metadata.uuid;
+		},
+		createUserAfter: (parentId, text) => {
+			const newId = uuidv4();
+			set((state) => {
+				const safeParent = parentId && state.nodes[parentId] ? parentId : null;
+				const nodes: NodeMap = {
+					...state.nodes,
+					[newId]: {
+						id: newId,
+						role: "user",
+						text,
+						createdAt: Date.now(),
+						parentId: safeParent,
+					},
+				};
+				return withDerivedTree(nodes);
+			});
+			return newId;
+		},
+		createAssistantAfter: (parentId) => {
+			if (!get().nodes[parentId]) {
+				throw new Error(`Parent node ${parentId} not found`);
+			}
+			const newId = uuidv4();
+			set((state) => {
+				const nodes: NodeMap = {
+					...state.nodes,
+					[newId]: {
+						id: newId,
+						role: "assistant",
+						text: "",
+						reasoningContent: undefined,
+						createdAt: Date.now(),
+						status: "draft",
+						parentId,
+					},
+				};
+				return withDerivedTree(nodes);
+			});
+			return newId;
+		},
+		appendToNode: (nodeId, delta) =>
+			set((state) => {
+				const node = state.nodes[nodeId];
+				if (!node) {
+					return state;
+				}
+				const nextContent =
+					typeof delta.content === "string"
+						? `${node.text}${delta.content}`
+						: node.text;
+				const nextReasoning =
+					typeof delta.reasoning === "string"
+						? `${node.reasoningContent ?? ""}${delta.reasoning}`
+						: node.reasoningContent;
+				const nodes: NodeMap = {
+					...state.nodes,
+					[nodeId]: {
+						...node,
+						text: nextContent,
+						reasoningContent: nextReasoning,
+					},
+				};
+				return { nodes } satisfies Partial<TreeState>;
+			}),
+		setNodeText: (nodeId, text) =>
+			set((state) => {
+				const node = state.nodes[nodeId];
+				if (!node) {
+					return state;
+				}
+				const nodes: NodeMap = {
+					...state.nodes,
+					[nodeId]: {
+						...node,
+						text,
+					},
+				};
+				return { nodes } satisfies Partial<TreeState>;
+			}),
+		setNodeStatus: (nodeId, status) =>
+			set((state) => {
+				const node = state.nodes[nodeId];
+				if (!node) {
+					return state;
+				}
+				const nodes: NodeMap = {
+					...state.nodes,
+					[nodeId]: {
+						...node,
+						status,
+					},
+				};
+				return { nodes } satisfies Partial<TreeState>;
+			}),
+		predecessorOf: (nodeId) => get().nodes[nodeId]?.parentId ?? undefined,
+		canReparent: (parentId, childId) => {
+			const { nodes } = get();
+			if (!nodes[parentId] || !nodes[childId] || parentId === childId) {
+				return false;
+			}
+			return !isAncestor(nodes, childId, parentId);
+		},
+		reparentNode: (target, nextParent) =>
+			set((state) => {
+				if (!state.nodes[target] || !state.nodes[nextParent]) {
+					return state;
+				}
+				if (
+					nextParent === target ||
+					isAncestor(state.nodes, target, nextParent)
+				) {
+					return state;
+				}
+				const nodes: NodeMap = {
+					...state.nodes,
+					[target]: {
+						...state.nodes[target],
+						parentId: nextParent,
+					},
+				};
+				return withDerivedTree(nodes);
+			}),
+		cloneNode: (sourceId) => {
+			const source = get().nodes[sourceId];
+			if (!source) {
+				return undefined;
+			}
+			const newId = uuidv4();
+			set((state) => {
+				const nodes: NodeMap = {
+					...state.nodes,
+					[newId]: {
+						id: newId,
+						role: source.role,
+						text: source.text,
+						reasoningContent: source.reasoningContent,
+						createdAt: Date.now(),
+						parentId: source.parentId ?? null,
+						status: source.status,
+					},
+				};
+				return withDerivedTree(nodes);
+			});
+			return newId;
+		},
+		replaceNodeWithEditedClone: (nodeId, updates) => {
+			let replacementId: NodeID | undefined;
+			set((state) => {
+				const target = state.nodes[nodeId];
+				if (!target) {
+					return state;
+				}
+				const nodes: NodeMap = { ...state.nodes };
+				const newId = uuidv4();
+				replacementId = newId;
+				nodes[newId] = {
+					...target,
+					id: newId,
+					text: updates.text ?? target.text,
+					reasoningContent: updates.reasoningContent ?? target.reasoningContent,
+					parentId: target.parentId ?? null,
+					createdAt: Date.now(),
+					status: "final",
+				};
+				for (const child of Object.values(nodes)) {
+					if (child.parentId === nodeId) {
+						nodes[child.id] = {
+							...child,
+							parentId: newId,
+						};
+					}
+				}
+				return withDerivedTree(nodes, {
+					activeTargetId:
+						state.activeTargetId === nodeId ? newId : state.activeTargetId,
+				});
+			});
+			return replacementId;
+		},
+		removeNode: (id) =>
+			set((state) => {
+				const target = state.nodes[id];
+				if (!target) {
+					return state;
+				}
+				const childrenIndex = buildChildrenIndex(state.nodes);
+				const children = childrenIndex.get(id) ?? [];
+				const nodes: NodeMap = { ...state.nodes };
+				delete nodes[id];
+				for (const child of children) {
+					const existing = nodes[child.id];
+					if (!existing) {
+						continue;
+					}
 					nodes[child.id] = {
-						...child,
-						parentId: newId,
+						...existing,
+						parentId: target.parentId ?? null,
 					};
 				}
-			}
-			return withDerivedTree(nodes, {
-				activeTargetId:
-					state.activeTargetId === nodeId ? newId : state.activeTargetId,
-			});
-		});
-		return replacementId;
-	},
-	removeNode: (id) =>
-		set((state) => {
-			const target = state.nodes[id];
-			if (!target) {
-				return state;
-			}
-			const childrenIndex = buildChildrenIndex(state.nodes);
-			const children = childrenIndex.get(id) ?? [];
-			const nodes: NodeMap = { ...state.nodes };
-			delete nodes[id];
-			for (const child of children) {
-				const existing = nodes[child.id];
-				if (!existing) {
-					continue;
-				}
-				nodes[child.id] = {
-					...existing,
-					parentId: target.parentId ?? null,
-				};
-			}
-			const nextActive =
-				state.activeTargetId === id
-					? target.parentId ?? undefined
-					: state.activeTargetId;
-			return withDerivedTree(nodes, {
-				activeTargetId: nextActive,
-			});
-		}),
-	reset: () =>
-		set({
-			nodes: {},
-			edges: {},
-			roots: [],
-			activeTargetId: undefined,
-		}),
-	exportSnapshot: () => {
-		const state = get();
-		const nodes = Object.fromEntries(
-			Object.entries(state.nodes).map(([id, node]) => [
-				id,
-				{ ...node, parentId: node.parentId ?? null },
-			]),
-		);
-		return {
-			version: 1,
-			exportedAt: new Date().toISOString(),
-			tree: {
-				nodes,
-			},
-			activeTargetId: state.activeTargetId,
-		} satisfies ConversationSnapshot;
-	},
-	importSnapshot: (snapshot) => {
-		if (snapshot.version !== 1) {
-			throw new Error(`Unsupported snapshot version: ${snapshot.version}`);
-		}
-		const nodesRaw = snapshot.tree?.nodes ?? {};
-		const nodes: NodeMap = {};
-		for (const [id, node] of Object.entries(nodesRaw)) {
-			const createdAt =
-				typeof node.createdAt === "number" ? node.createdAt : Date.now();
-			const parentId =
-				node.parentId && nodesRaw[node.parentId] ? node.parentId : null;
-			nodes[id] = {
-				id,
-				role: coerceRole(node.role),
-				text: node.text ?? "",
-				reasoningContent: node.reasoningContent,
-				createdAt,
-				status: node.status,
-				parentId,
-			} satisfies TreeNode;
-		}
-		set(
-			withDerivedTree(nodes, {
-				activeTargetId:
-					snapshot.activeTargetId && nodes[snapshot.activeTargetId]
-						? snapshot.activeTargetId
-						: undefined,
+				const nextActive =
+					state.activeTargetId === id
+						? target.parentId ?? undefined
+						: state.activeTargetId;
+				return withDerivedTree(nodes, {
+					activeTargetId: nextActive,
+				});
 			}),
-		);
-	},
-}));
+		reset: () =>
+			set({
+				nodes: {},
+				edges: {},
+				roots: [],
+				activeTargetId: undefined,
+			}),
+		exportSnapshot: () => {
+			const state = get();
+			const nodes = Object.fromEntries(
+				Object.entries(state.nodes).map(([id, node]) => [
+					id,
+					{ ...node, parentId: node.parentId ?? null },
+				]),
+			);
+			return {
+				version: 1,
+				exportedAt: new Date().toISOString(),
+				tree: {
+					nodes,
+				},
+				activeTargetId: state.activeTargetId,
+			} satisfies ConversationSnapshot;
+		},
+		importSnapshot: (snapshot) => {
+			if (snapshot.version !== 1) {
+				throw new Error(`Unsupported snapshot version: ${snapshot.version}`);
+			}
+			const nodesRaw = snapshot.tree?.nodes ?? {};
+			const nodes: NodeMap = {};
+			for (const [id, node] of Object.entries(nodesRaw)) {
+				const createdAt =
+					typeof node.createdAt === "number" ? node.createdAt : Date.now();
+				const parentId =
+					node.parentId && nodesRaw[node.parentId] ? node.parentId : null;
+				nodes[id] = {
+					id,
+					role: coerceRole(node.role),
+					text: node.text ?? "",
+					reasoningContent: node.reasoningContent,
+					createdAt,
+					status: node.status,
+					parentId,
+				} satisfies TreeNode;
+			}
+			set(
+				withDerivedTree(nodes, {
+					activeTargetId:
+						snapshot.activeTargetId && nodes[snapshot.activeTargetId]
+							? snapshot.activeTargetId
+							: undefined,
+				}),
+			);
+		},
+	}),
+);
 
 export const useConversationGraph = useConversationTree;
