@@ -1,3 +1,5 @@
+import type { LanguageModel } from "ai";
+
 export type AppView = "chat" | "diagram" | "text";
 
 export interface MessageMetadata {
@@ -26,3 +28,24 @@ export type BuiltInAvailability =
 	| "downloadable"
 	| "downloading"
 	| "available";
+
+export interface OpenAIProviderAdapter {
+	chatModel: (id: string) => LanguageModel;
+	completionModel: (id: string) => LanguageModel;
+}
+
+export type ChatProviderReady =
+	| {
+			kind: "openai-compatible";
+			modelId: string;
+			openAIProvider: OpenAIProviderAdapter;
+	  }
+	| {
+			kind: "built-in";
+			getBuiltInChatModel: () => LanguageModel;
+	  };
+
+export type CompletionProviderReady = Extract<
+	ChatProviderReady,
+	{ kind: "openai-compatible" }
+>;

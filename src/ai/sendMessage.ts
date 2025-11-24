@@ -1,21 +1,9 @@
 import { type LanguageModel, type ModelMessage, streamText } from "ai";
-import { toast } from "sonner";
 import type { StreamManager } from "../hooks/useStreamManager";
-import type { Message, ProviderKind } from "../types";
+import type { ChatProviderReady, Message } from "../types";
 
 export interface SendMessageContext {
-	providerKind: ProviderKind;
-	builtInAvailability:
-		| "unknown"
-		| "unavailable"
-		| "downloadable"
-		| "downloading"
-		| "available";
-	activeModel: string | null;
-	openAIProvider: {
-		chatModel: (id: string) => LanguageModel;
-	} | null;
-	getBuiltInChatModel: () => LanguageModel;
+	provider: ChatProviderReady;
 	activeTargetId?: string;
 	activeTail: () => string | undefined;
 	createSystemMessage: (text: string) => string;
@@ -39,11 +27,7 @@ export interface SendMessageContext {
 export const sendMessage = async (
 	promptText: string,
 	{
-		providerKind,
-		builtInAvailability,
-		activeModel,
-		openAIProvider,
-		getBuiltInChatModel,
+		provider,
 		activeTargetId,
 		activeTail,
 		createSystemMessage,
@@ -58,21 +42,10 @@ export const sendMessage = async (
 		defaultSystemPrompt,
 	}: SendMessageContext,
 ) => {
-	const usingOpenAI = providerKind === "openai-compatible";
-	if (usingOpenAI) {
-		if (!activeModel) {
-			toast.error("Select a model before sending");
-			return;
-		}
-		if (!openAIProvider) {
-			toast.error("Set an API base URL before sending");
-			return;
-		}
-	} else if (builtInAvailability !== "available") {
-		toast.error("Download the built-in model in Settings before chatting");
-		return;
-	}
-	const builtInModel = usingOpenAI ? null : getBuiltInChatModel();
+	const model: LanguageModel =
+		provider.kind === "openai-compatible"
+			? provider.openAIProvider.chatModel(provider.modelId)
+			: provider.getBuiltInChatModel();
 	const trimmedPrompt = promptText.trim();
 	let resolvedParentId = activeTail() ?? activeTargetId;
 	if (!resolvedParentId) {
@@ -94,9 +67,7 @@ export const sendMessage = async (
 		}));
 	try {
 		const stream = streamText({
-			model: usingOpenAI
-				? openAIProvider!.chatModel(activeModel!)
-				: builtInModel!,
+			model,
 			messages: contextMessages,
 			temperature: 0.3,
 			abortSignal: abortController.signal,
