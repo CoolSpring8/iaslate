@@ -21,6 +21,7 @@
 - Type-checking: use tsc. Run `bunx tsc --noEmit` to check for type errors.
 - Components: keep UI logic close to the component (e.g., hover/edit toggles in `MessageItem`, menu interactions in `DiagramView`); shared conversation/tree logic belongs in the store.
 - CSS: prefer Tailwind utilities; add global styles in `src/index.css` only when necessary.
+- Tailwind preflight is not enabled; when using `border`, also include `border-solid` (and set a color) to avoid browser defaults.
 
 ## Providers & Capabilities
 

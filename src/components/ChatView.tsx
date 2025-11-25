@@ -192,35 +192,73 @@ const ChatView = ({
 			</div>
 			<div className="relative px-4 py-2">
 				<div className="flex items-center">
-					<Textarea
-						className="w-full"
-						minRows={1}
-						maxRows={5}
-						placeholder="Type your message..."
-						value={prompt}
-						onChange={(event) => {
-							setPrompt(event.target.value);
-						}}
-						onCompositionStart={() => {
-							isComposing.current = true;
-						}}
-						onCompositionEnd={() => {
-							isComposing.current = false;
-						}}
-						onKeyDown={(event) => {
-							if (
-								event.key === "Enter" &&
-								!event.shiftKey &&
-								!event.nativeEvent.isComposing &&
-								!isComposing.current
-							) {
-								event.preventDefault();
-								handleSubmit();
-							}
-						}}
-					/>
+					<div className="flex-1 overflow-hidden rounded-lg border border-solid border-slate-200 bg-white shadow-sm">
+						{attachments.length > 0 && (
+							<div className="flex flex-wrap items-center gap-2 px-3 py-2">
+								{attachments.map((attachment, index) =>
+									attachment.type === "image" ? (
+										<div
+											key={`${attachment.image}-${index}`}
+											className="flex items-center gap-2 rounded-full bg-white px-2 py-1 text-slate-700 shadow-sm ring-1 ring-slate-200"
+										>
+											<div className="h-7 w-7 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
+												<img
+													src={attachment.image}
+													alt="User attachment"
+													className="h-full w-full object-cover"
+												/>
+											</div>
+											<span className="text-xs font-medium leading-none">
+												Image {index + 1}
+											</span>
+											<UnstyledButton
+												className="ml-1 flex h-5 w-5 items-center justify-center rounded-full text-slate-600 hover:bg-slate-200"
+												onClick={() => {
+													setAttachments((draft) => {
+														draft.splice(index, 1);
+													});
+												}}
+												title="Remove attachment"
+											>
+												<div className="i-lucide-x w-4 h-4" />
+											</UnstyledButton>
+										</div>
+									) : null,
+								)}
+							</div>
+						)}
+						<Textarea
+							className="w-full"
+							classNames={{ input: "px-3 py-2 text-sm leading-5 placeholder:text-slate-400" }}
+							minRows={1}
+							maxRows={5}
+							variant="unstyled"
+							placeholder="Type your message..."
+							value={prompt}
+							onChange={(event) => {
+								setPrompt(event.target.value);
+							}}
+							onCompositionStart={() => {
+								isComposing.current = true;
+							}}
+							onCompositionEnd={() => {
+								isComposing.current = false;
+							}}
+							onKeyDown={(event) => {
+								if (
+									event.key === "Enter" &&
+									!event.shiftKey &&
+									!event.nativeEvent.isComposing &&
+									!isComposing.current
+								) {
+									event.preventDefault();
+									handleSubmit();
+								}
+							}}
+						/>
+					</div>
 					<UnstyledButton
-						className="ml-2 border rounded-full w-8 h-8 flex items-center justify-center"
+						className="ml-3 border border-solid border-slate-300 rounded-full w-8 h-8 flex items-center justify-center"
 						onClick={() => {
 							fileInputRef.current?.click();
 						}}
@@ -229,7 +267,7 @@ const ChatView = ({
 						<div className="i-lucide-image w-4 h-4" />
 					</UnstyledButton>
 					<UnstyledButton
-						className="ml-2 border rounded-full w-8 h-8 flex items-center justify-center"
+						className="ml-2 border border-solid border-slate-300 rounded-full w-8 h-8 flex items-center justify-center"
 						onClick={handleSubmit}
 					>
 						<div
@@ -258,35 +296,6 @@ const ChatView = ({
 						}
 					}}
 				/>
-				{attachments.length > 0 && (
-					<div className="mt-2 flex flex-wrap gap-2">
-						{attachments.map((attachment, index) =>
-							attachment.type === "image" ? (
-								<div
-									key={`${attachment.image}-${index}`}
-									className="relative h-16 w-16 overflow-hidden rounded border"
-								>
-									<img
-										src={attachment.image}
-										alt="User attachment"
-										className="h-full w-full object-cover"
-									/>
-									<UnstyledButton
-										className="absolute right-1 top-1 h-5 w-5 rounded-full bg-white/80 text-slate-700 hover:bg-white"
-										onClick={() => {
-											setAttachments((draft) => {
-												draft.splice(index, 1);
-											});
-										}}
-										title="Remove attachment"
-									>
-										<div className="i-lucide-x w-4 h-4" />
-									</UnstyledButton>
-								</div>
-							) : null,
-						)}
-					</div>
-				)}
 				{editingMessage && (
 					<div className="absolute left-4 -top-8 h-8 w-[calc(100%-2rem)] rounded bg-orange-300 p-2 flex items-center text-slate-700 text-sm">
 						<div className="i-lucide-edit flex-none" />
