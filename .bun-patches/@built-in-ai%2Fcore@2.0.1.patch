@@ -1,0 +1,75 @@
+diff --git a/node_modules/@built-in-ai/core/.bun-tag-d546d55538164722 b/.bun-tag-d546d55538164722
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/index.js b/dist/index.js
+index 9398fde99b09707f7d62dfdbce5062784c665c3d..62146453379a454a8c78f87cbd6342b9dc772cc4 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -62,7 +62,13 @@ function convertFileData(data, mediaType) {
+ function convertToBuiltInAIMessages(prompt) {
+   let systemMessage;
+   const messages = [];
+-  for (const message of prompt) {
++  for (const [index, message] of prompt.entries()) {
++    const prefix = !!message.providerOptions?.["browser-ai"]?.prefix;
++    if (prefix && (message.role !== "assistant" || index !== prompt.length - 1)) {
++      throw new import_provider.UnsupportedFunctionalityError({
++        functionality: "prefix on non-final assistant message"
++      });
++    }
+     switch (message.role) {
+       case "system": {
+         systemMessage = message.content;
+@@ -124,10 +130,14 @@ function convertToBuiltInAIMessages(prompt) {
+             }
+           }
+         }
+-        messages.push({
++        const assistantMessage = {
+           role: "assistant",
+           content: text
+-        });
++        };
++        if (prefix) {
++          assistantMessage.prefix = true;
++        }
++        messages.push(assistantMessage);
+         break;
+       }
+       case "tool": {
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 4c346c33f370c5682b911734cda1402f40603afb..42fa23c6b9be6415b73b9d097627a8d1a3d91e54 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -35,7 +35,13 @@ function convertFileData(data, mediaType) {
+ function convertToBuiltInAIMessages(prompt) {
+   let systemMessage;
+   const messages = [];
+-  for (const message of prompt) {
++  for (const [index, message] of prompt.entries()) {
++    const prefix = !!message.providerOptions?.["browser-ai"]?.prefix;
++    if (prefix && (message.role !== "assistant" || index !== prompt.length - 1)) {
++      throw new UnsupportedFunctionalityError({
++        functionality: "prefix on non-final assistant message"
++      });
++    }
+     switch (message.role) {
+       case "system": {
+         systemMessage = message.content;
+@@ -97,10 +103,14 @@ function convertToBuiltInAIMessages(prompt) {
+             }
+           }
+         }
+-        messages.push({
++        const assistantMessage = {
+           role: "assistant",
+           content: text
+-        });
++        };
++        if (prefix) {
++          assistantMessage.prefix = true;
++        }
++        messages.push(assistantMessage);
+         break;
+       }
+       case "tool": {

@@ -70,16 +70,29 @@ export const sendMessage = async (
 	const assistantId = shouldAppendToAssistant
 		? lastMessage._metadata.uuid
 		: createAssistantAfter(resolvedParentId);
+	const shouldPrefixAssistant =
+		provider.kind === "built-in" && shouldAppendToAssistant;
 	setNodeStatus(assistantId, "streaming");
 	setActiveTarget(assistantId);
 	const abortController = new AbortController();
 	streamManager.register(assistantId, abortController);
 	const modelMessages = contextMessages
 		.filter((message) => message.role !== "tool")
-		.map((message) => ({
-			role: message.role as "system" | "user" | "assistant",
-			content: message.content,
-		})) as ModelMessage[];
+		.map((message) => {
+			const base = {
+				role: message.role as "system" | "user" | "assistant",
+				content: message.content,
+			};
+			if (shouldPrefixAssistant && message._metadata.uuid === assistantId) {
+				return {
+					...base,
+					providerOptions: {
+						"browser-ai": { prefix: true },
+					},
+				};
+			}
+			return base;
+		}) as ModelMessage[];
 	try {
 		const stream = streamText({
 			model,
