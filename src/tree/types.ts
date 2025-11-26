@@ -1,3 +1,5 @@
+import type { MessageContent } from "../types";
+
 export type NodeID = string;
 export type EdgeID = string;
 export type EdgeKind = "sequence";
@@ -5,7 +7,7 @@ export type EdgeKind = "sequence";
 export interface TreeNode {
 	id: NodeID;
 	role: "system" | "user" | "assistant" | "tool";
-	text: string;
+	content: MessageContent;
 	reasoningContent?: string;
 	createdAt: number;
 	status?: "draft" | "streaming" | "final" | "error";
@@ -25,8 +27,8 @@ export interface ConversationTree {
 	roots: NodeID[];
 }
 
-export interface ConversationSnapshotV1 {
-	version: 1;
+export interface ConversationSnapshotV2 {
+	version: 2;
 	exportedAt: string;
 	tree: {
 		nodes: Record<NodeID, TreeNode>;
@@ -34,4 +36,4 @@ export interface ConversationSnapshotV1 {
 	activeTargetId?: NodeID;
 }
 
-export type ConversationSnapshot = ConversationSnapshotV1;
+export type ConversationSnapshot = ConversationSnapshotV2;

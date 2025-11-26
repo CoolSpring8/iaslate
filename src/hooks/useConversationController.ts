@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { sendMessage } from "../ai/sendMessage";
 import { useConversationTree } from "../tree/useConversationTree";
-import type { ChatProviderReady, Message } from "../types";
+import type { ChatProviderReady, Message, MessageContent } from "../types";
 import { deleteMessage } from "../utils/chatActions";
 import { useStreamManager } from "./useStreamManager";
 
@@ -63,27 +63,68 @@ export const useConversationController = ({
 		})),
 	);
 
-	const areMessagesEqual = useCallback((next: Message[], prev: Message[]) => {
-		if (next === prev) {
-			return true;
-		}
-		if (next.length !== prev.length) {
-			return false;
-		}
-		for (let index = 0; index < next.length; index++) {
-			const a = next[index];
-			const b = prev[index];
-			if (
-				a._metadata.uuid !== b._metadata.uuid ||
-				a.role !== b.role ||
-				a.content !== b.content ||
-				a.reasoning_content !== b.reasoning_content
-			) {
+	const areContentsEqual = useCallback(
+		(aContent: MessageContent, bContent: MessageContent) => {
+			if (aContent === bContent) {
+				return true;
+			}
+			if (typeof aContent === "string" || typeof bContent === "string") {
+				return aContent === bContent;
+			}
+			if (aContent.length !== bContent.length) {
 				return false;
 			}
-		}
-		return true;
-	}, []);
+			for (let index = 0; index < aContent.length; index++) {
+				const partA = aContent[index]!;
+				const partB = bContent[index]!;
+				if (partA.type !== partB.type) {
+					return false;
+				}
+				if (partA.type === "text" && partB.type === "text") {
+					if (partA.text !== partB.text) {
+						return false;
+					}
+					continue;
+				}
+				if (partA.type === "image" && partB.type === "image") {
+					if (
+						partA.image !== partB.image ||
+						partA.mimeType !== partB.mimeType
+					) {
+						return false;
+					}
+					continue;
+				}
+			}
+			return true;
+		},
+		[],
+	);
+
+	const areMessagesEqual = useCallback(
+		(next: Message[], prev: Message[]) => {
+			if (next === prev) {
+				return true;
+			}
+			if (next.length !== prev.length) {
+				return false;
+			}
+			for (let index = 0; index < next.length; index++) {
+				const a = next[index]!;
+				const b = prev[index]!;
+				if (
+					a._metadata.uuid !== b._metadata.uuid ||
+					a.role !== b.role ||
+					!areContentsEqual(a.content, b.content) ||
+					a.reasoning_content !== b.reasoning_content
+				) {
+					return false;
+				}
+			}
+			return true;
+		},
+		[areContentsEqual],
+	);
 
 	const chatMessages = useConversationTree(
 		useCallback((state) => state.compileActive(), []),
@@ -120,13 +161,13 @@ export const useConversationController = ({
 	]);
 
 	const handleSend = useCallback(
-		async (promptText: string) => {
+		async (promptContent: MessageContent) => {
 			const chatProvider = ensureChatReady();
 			if (!chatProvider) {
 				return;
 			}
 			try {
-				await sendMessage(promptText, {
+				await sendMessage(promptContent, {
 					provider: chatProvider,
 					activeTargetId,
 					activeTail,
@@ -223,9 +264,9 @@ export const useConversationController = ({
 	);
 
 	const handleFinishEdit = useCallback(
-		(nodeId: string, text: string) => {
+		(nodeId: string, content: MessageContent) => {
 			const replacementId = replaceNodeWithEditedClone(nodeId, {
-				text,
+				content,
 			});
 			if (!replacementId) {
 				return;

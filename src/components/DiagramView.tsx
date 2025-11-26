@@ -257,6 +257,13 @@ const DiagramView = ({
 		});
 
 		const nodes: Node[] = sortedNodes.map((dataNode) => {
+			const contentText =
+				typeof dataNode.content === "string"
+					? dataNode.content
+					: dataNode.content
+							.filter((part) => part.type === "text")
+							.map((part) => part.text)
+							.join("\n\n");
 			const label = (
 				<div className="flex items-start gap-2">
 					<div className="min-w-0">
@@ -264,7 +271,7 @@ const DiagramView = ({
 							{dataNode.role}
 						</p>
 						<p className="mt-1 text-sm font-medium leading-snug text-slate-800 line-clamp-3">
-							{dataNode.text}
+							{contentText}
 						</p>
 					</div>
 				</div>

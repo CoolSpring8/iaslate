@@ -1,13 +1,13 @@
 import { type LanguageModel, type ModelMessage, streamText } from "ai";
 import type { StreamManager } from "../hooks/useStreamManager";
-import type { ChatProviderReady, Message } from "../types";
+import type { ChatProviderReady, Message, MessageContent } from "../types";
 
 export interface SendMessageContext {
 	provider: ChatProviderReady;
 	activeTargetId?: string;
 	activeTail: () => string | undefined;
 	createSystemMessage: (text: string) => string;
-	createUserAfter: (parentId: string, text: string) => string;
+	createUserAfter: (parentId: string, content: MessageContent) => string;
 	createAssistantAfter: (parentId: string) => string;
 	setNodeStatus: (
 		id: string,
@@ -24,8 +24,17 @@ export interface SendMessageContext {
 	defaultSystemPrompt: string;
 }
 
+const hasMessageContent = (content: MessageContent) => {
+	if (typeof content === "string") {
+		return content.trim().length > 0;
+	}
+	return content.some((part) =>
+		part.type === "image" ? part.image.length > 0 : part.text.trim().length > 0,
+	);
+};
+
 export const sendMessage = async (
-	promptText: string,
+	promptContent: MessageContent,
 	{
 		provider,
 		activeTargetId,
@@ -46,25 +55,24 @@ export const sendMessage = async (
 		provider.kind === "openai-compatible"
 			? provider.openAIProvider.chatModel(provider.modelId)
 			: provider.getBuiltInChatModel();
-	const trimmedPrompt = promptText.trim();
 	let resolvedParentId = activeTail() ?? activeTargetId;
 	if (!resolvedParentId) {
 		resolvedParentId = createSystemMessage(defaultSystemPrompt);
 	}
-	if (trimmedPrompt.length > 0) {
-		resolvedParentId = createUserAfter(resolvedParentId, trimmedPrompt);
+	if (hasMessageContent(promptContent)) {
+		resolvedParentId = createUserAfter(resolvedParentId, promptContent);
 	}
 	const assistantId = createAssistantAfter(resolvedParentId);
 	setNodeStatus(assistantId, "streaming");
 	setActiveTarget(assistantId);
 	const abortController = new AbortController();
 	streamManager.register(assistantId, abortController);
-	const contextMessages: ModelMessage[] = compilePathTo(resolvedParentId)
+	const contextMessages = compilePathTo(resolvedParentId)
 		.filter((message) => message.role !== "tool")
 		.map((message) => ({
 			role: message.role as "system" | "user" | "assistant",
 			content: message.content,
-		}));
+		})) as ModelMessage[];
 	try {
 		const stream = streamText({
 			model,
