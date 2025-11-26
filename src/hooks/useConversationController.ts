@@ -93,6 +93,7 @@ export const useConversationController = ({
 					) {
 						return false;
 					}
+					continue;
 				}
 			}
 			return true;
