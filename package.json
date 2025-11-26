@@ -51,6 +51,7 @@
 		"typescript": "^5.6.3"
 	},
 	"patchedDependencies": {
-		"@ai-sdk/openai-compatible@1.0.27": ".bun-patches/@ai-sdk%2Fopenai-compatible@1.0.27.patch"
+		"@ai-sdk/openai-compatible@1.0.27": ".bun-patches/@ai-sdk%2Fopenai-compatible@1.0.27.patch",
+		"@built-in-ai/core@2.0.1": ".bun-patches/@built-in-ai%2Fcore@2.0.1.patch"
 	}
 }
