@@ -25,8 +25,8 @@ export interface ConversationTree {
 	roots: NodeID[];
 }
 
-export interface ConversationSnapshotV1 {
-	version: 1;
+export interface ConversationSnapshotV2 {
+	version: 2;
 	exportedAt: string;
 	tree: {
 		nodes: Record<NodeID, TreeNode>;
@@ -34,4 +34,4 @@ export interface ConversationSnapshotV1 {
 	activeTargetId?: NodeID;
 }
 
-export type ConversationSnapshot = ConversationSnapshotV1;
+export type ConversationSnapshot = ConversationSnapshotV2;

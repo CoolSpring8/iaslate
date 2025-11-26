@@ -515,7 +515,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 				]),
 			);
 			return {
-				version: 1,
+				version: 2,
 				exportedAt: new Date().toISOString(),
 				tree: {
 					nodes,
@@ -524,7 +524,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 			} satisfies ConversationSnapshot;
 		},
 		importSnapshot: (snapshot) => {
-			if (snapshot.version !== 1) {
+			if (snapshot.version !== 2) {
 				throw new Error(`Unsupported snapshot version: ${snapshot.version}`);
 			}
 			const nodesRaw = snapshot.tree?.nodes ?? {};
