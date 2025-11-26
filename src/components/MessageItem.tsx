@@ -145,9 +145,7 @@ const MessageItem = ({
 								}`}
 							</Markdown>
 						) : (
-							<div
-								key={`${message._metadata.uuid}-image-${index}`}
-							>
+							<div key={`${message._metadata.uuid}-image-${index}`}>
 								<img
 									src={part.image}
 									alt="User provided"

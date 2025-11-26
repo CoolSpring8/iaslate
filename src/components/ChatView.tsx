@@ -229,7 +229,9 @@ const ChatView = ({
 						)}
 						<Textarea
 							className="w-full"
-							classNames={{ input: "px-3 py-2 text-sm leading-5 placeholder:text-slate-400" }}
+							classNames={{
+								input: "px-3 py-2 text-sm leading-5 placeholder:text-slate-400",
+							}}
 							minRows={1}
 							maxRows={5}
 							variant="unstyled"
