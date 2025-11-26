@@ -147,7 +147,6 @@ const MessageItem = ({
 						) : (
 							<div
 								key={`${message._metadata.uuid}-image-${index}`}
-								className="mt-2"
 							>
 								<img
 									src={part.image}
