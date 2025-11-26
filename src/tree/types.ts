@@ -1,3 +1,5 @@
+import type { MessageContent } from "../types";
+
 export type NodeID = string;
 export type EdgeID = string;
 export type EdgeKind = "sequence";
@@ -5,7 +7,7 @@ export type EdgeKind = "sequence";
 export interface TreeNode {
 	id: NodeID;
 	role: "system" | "user" | "assistant" | "tool";
-	content: import("../types").MessageContent;
+	content: MessageContent;
 	reasoningContent?: string;
 	createdAt: number;
 	status?: "draft" | "streaming" | "final" | "error";

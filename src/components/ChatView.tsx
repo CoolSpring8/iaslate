@@ -1,9 +1,12 @@
 import { Textarea, UnstyledButton } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { toast } from "sonner";
 import { twJoin } from "tailwind-merge";
 import { useImmer } from "use-immer";
 import type { Message, MessageContent, MessageContentPart } from "../types";
 import MessageItem from "./MessageItem";
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 interface ChatViewProps {
 	messages: Message[];
@@ -126,8 +129,16 @@ const ChatView = ({
 
 	const handleFileInput = useCallback(
 		async (file: File) => {
+			if (file.size > MAX_FILE_SIZE_BYTES) {
+				toast.error("File too large (max 10MB)");
+				return;
+			}
 			if (file.type.startsWith("image/")) {
 				const reader = new FileReader();
+				reader.onerror = () => {
+					console.error(`Failed to read image file: ${file.name}`);
+					toast.error("Failed to read image file");
+				};
 				reader.onload = () => {
 					const result = typeof reader.result === "string" ? reader.result : "";
 					if (result) {
@@ -137,8 +148,13 @@ const ChatView = ({
 				reader.readAsDataURL(file);
 				return;
 			}
-			const content = await file.text();
-			setPrompt((draft) => draft + content);
+			try {
+				const content = await file.text();
+				setPrompt((draft) => draft + content);
+			} catch (error) {
+				console.error(`Failed to read text file: ${file.name}`, error);
+				toast.error("Failed to read text file");
+			}
 		},
 		[addImageAttachment, setPrompt],
 	);
