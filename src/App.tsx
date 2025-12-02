@@ -24,23 +24,21 @@ const defaultSystemPrompt = "You are a helpful assistant.";
 
 const App = () => {
 	const {
-		baseURL,
-		apiKey,
+		providers,
+		activeProviderId,
 		models,
 		activeModel,
 		setActiveModel,
-		providerKind,
 		builtInAvailability,
 		hydrate,
 		refreshBuiltInAvailability,
 	} = useSettingsStore(
 		useShallow((state) => ({
-			baseURL: state.baseURL,
-			apiKey: state.apiKey,
+			providers: state.providers,
+			activeProviderId: state.activeProviderId,
 			models: state.models,
 			activeModel: state.activeModel,
 			setActiveModel: state.setActiveModel,
-			providerKind: state.providerKind,
 			builtInAvailability: state.builtInAvailability,
 			hydrate: state.hydrate,
 			refreshBuiltInAvailability: state.refreshBuiltInAvailability,
@@ -48,13 +46,20 @@ const App = () => {
 	);
 	const [view, setView] = useState<AppView>("chat");
 
+	const activeProvider = useMemo(
+		() => providers.find((p) => p.id === activeProviderId),
+		[providers, activeProviderId],
+	);
+
+	const providerKind = activeProvider?.kind ?? "openai-compatible";
+
 	const openAIProvider = useMemo(
 		() =>
 			buildOpenAICompatibleProvider({
-				baseURL,
-				apiKey,
+				baseURL: activeProvider?.config.baseURL ?? "",
+				apiKey: activeProvider?.config.apiKey ?? "",
 			}),
-		[apiKey, baseURL],
+		[activeProvider],
 	);
 
 	const getBuiltInChatModel = useCallback(() => builtInAI(), []);

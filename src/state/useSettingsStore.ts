@@ -4,39 +4,39 @@ import { toast } from "sonner";
 import { create } from "zustand";
 import { fetchOpenAICompatibleModels } from "../ai/openaiCompatible";
 import { settingsKey } from "../constants/storageKeys";
-import type { BuiltInAvailability, ModelInfo, ProviderKind } from "../types";
+import type { BuiltInAvailability, ModelInfo, ProviderEntry } from "../types";
+
+import { v4 as uuidv4 } from "uuid";
 
 interface SettingsState {
-	baseURL: string;
-	apiKey: string;
+	providers: ProviderEntry[];
+	activeProviderId: string | null;
 	models: ModelInfo[];
 	activeModel: string | null;
-	providerKind: ProviderKind;
 	builtInAvailability: BuiltInAvailability;
 	isHydrated: boolean;
 	setActiveModel: (model: string | null) => void;
 	setBuiltInAvailability: (availability: BuiltInAvailability) => void;
 	refreshBuiltInAvailability: () => Promise<void>;
 	hydrate: () => Promise<void>;
-	saveSettings: (values: {
-		baseURL: string;
-		apiKey: string;
-		providerKind: ProviderKind;
-	}) => Promise<void>;
+	addProvider: (entry: Omit<ProviderEntry, "id">) => Promise<void>;
+	updateProvider: (
+		id: string,
+		updates: Partial<ProviderEntry>,
+	) => Promise<void>;
+	removeProvider: (id: string) => Promise<void>;
+	setActiveProvider: (id: string | null) => Promise<void>;
 	syncModels: (options?: {
-		baseURLOverride?: string;
-		apiKeyOverride?: string;
 		silent?: boolean;
 		force?: boolean;
 	}) => Promise<ModelInfo[]>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-	baseURL: "",
-	apiKey: "",
+	providers: [],
+	activeProviderId: null,
 	models: [],
 	activeModel: null,
-	providerKind: "openai-compatible",
 	builtInAvailability: "unknown",
 	isHydrated: false,
 	setActiveModel: (model) => set({ activeModel: model }),
@@ -53,9 +53,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 	},
 	hydrate: async () => {
 		const storedSettings = await getValue<{
-			baseURL: string;
-			apiKey: string;
-			providerKind: ProviderKind;
+			providers: ProviderEntry[];
+			activeProviderId: string | null;
 			models: ModelInfo[];
 		}>(settingsKey);
 
@@ -66,64 +65,118 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 				isHydrated: true,
 			});
 		} else {
-			// Initialize with defaults if no settings found
 			set({ isHydrated: true });
 		}
 	},
-	saveSettings: async ({ baseURL, apiKey, providerKind }) => {
-		const currentSettings = {
-			baseURL,
-			apiKey,
-			providerKind,
-			models: get().models,
-		};
-		set(currentSettings);
-		await setValue(settingsKey, currentSettings);
+	addProvider: async (entry) => {
+		const newProvider = { ...entry, id: uuidv4() };
+		const { providers } = get();
+		const newProviders = [...providers, newProvider];
 
-		if (providerKind === "openai-compatible") {
-			await get().syncModels({
-				baseURLOverride: baseURL,
-				apiKeyOverride: apiKey,
-				silent: true,
-				force: true,
-			});
+		set({ providers: newProviders });
+
+		// If it's the first provider, make it active
+		if (newProviders.length === 1) {
+			await get().setActiveProvider(newProvider.id);
 		} else {
-			set({ activeModel: null });
+			await setValue(settingsKey, {
+				providers: newProviders,
+				activeProviderId: get().activeProviderId,
+				models: get().models,
+			});
 		}
 	},
-	syncModels: async ({
-		baseURLOverride,
-		apiKeyOverride,
-		silent = false,
-		force = false,
-	} = {}) => {
-		const currentProviderKind = get().providerKind;
-		if (!force && currentProviderKind !== "openai-compatible") {
+	updateProvider: async (id, updates) => {
+		const { providers, activeProviderId } = get();
+		const newProviders = providers.map((p) =>
+			p.id === id ? { ...p, ...updates } : p,
+		);
+		set({ providers: newProviders });
+
+		await setValue(settingsKey, {
+			providers: newProviders,
+			activeProviderId,
+			models: get().models,
+		});
+
+		// If updating active provider, re-sync might be needed, but we'll let user trigger it manually or on switch
+		if (id === activeProviderId && updates.config) {
+			// Optional: auto-sync or clear models?
+			// For now, let's just clear models if base URL changed to avoid mismatch
+			if (updates.config.baseURL) {
+				set({ models: [], activeModel: null });
+			}
+		}
+	},
+	removeProvider: async (id) => {
+		const { providers, activeProviderId } = get();
+		const newProviders = providers.filter((p) => p.id !== id);
+		let newActiveId = activeProviderId;
+
+		if (activeProviderId === id) {
+			newActiveId = newProviders[0]?.id ?? null;
+			set({ models: [], activeModel: null });
+		}
+
+		set({ providers: newProviders, activeProviderId: newActiveId });
+
+		await setValue(settingsKey, {
+			providers: newProviders,
+			activeProviderId: newActiveId,
+			models: get().models,
+		});
+
+		if (newActiveId) {
+			await get().syncModels({ silent: true });
+		}
+	},
+	setActiveProvider: async (id) => {
+		set({ activeProviderId: id });
+		await setValue(settingsKey, {
+			providers: get().providers,
+			activeProviderId: id,
+			models: get().models,
+		});
+		if (id) {
+			await get().syncModels({ silent: true, force: true });
+		} else {
+			set({ models: [], activeModel: null });
+		}
+	},
+	syncModels: async ({ silent = false, force = false } = {}) => {
+		const { activeProviderId, providers } = get();
+		const activeProvider = providers.find((p) => p.id === activeProviderId);
+
+		if (!activeProvider) {
 			return [];
 		}
-		const targetBaseURL = (baseURLOverride ?? get().baseURL).trim();
-		const targetAPIKey = apiKeyOverride ?? get().apiKey;
+
+		if (!force && activeProvider.kind !== "openai-compatible") {
+			return [];
+		}
+
+		const targetBaseURL = activeProvider.config.baseURL?.trim();
+		const targetAPIKey = activeProvider.config.apiKey;
+
 		if (!targetBaseURL) {
 			if (!silent) {
 				toast.error("Set an API base URL before syncing");
 			}
 			return [];
 		}
+
 		try {
 			const fetchedModels = await fetchOpenAICompatibleModels({
 				baseURL: targetBaseURL,
-				apiKey: targetAPIKey,
+				apiKey: targetAPIKey || "",
 			});
 			set({ models: fetchedModels });
 
-			// Update storage with new models
-			const currentSettings = {
-				baseURL: get().baseURL,
-				apiKey: get().apiKey,
-				providerKind: get().providerKind,
+			await setValue(settingsKey, {
+				providers: get().providers,
+				activeProviderId: get().activeProviderId,
 				models: fetchedModels,
-			};
-			await setValue(settingsKey, currentSettings);
+			});
 
 			const currentModel = get().activeModel;
 			const currentModelStillValid = fetchedModels.some(

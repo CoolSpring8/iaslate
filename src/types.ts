@@ -28,6 +28,16 @@ export interface ModelInfo {
 
 export type ProviderKind = "openai-compatible" | "built-in";
 
+export interface ProviderEntry {
+	id: string;
+	name: string;
+	kind: ProviderKind;
+	config: {
+		baseURL?: string;
+		apiKey?: string;
+	};
+}
+
 export type BuiltInAvailability =
 	| "unknown"
 	| "unavailable"
