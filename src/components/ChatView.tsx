@@ -1,5 +1,6 @@
 import { Textarea, UnstyledButton } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { ClipboardEvent } from "react";
 import { toast } from "sonner";
 import { twJoin } from "tailwind-merge";
 import { useImmer } from "use-immer";
@@ -176,6 +177,28 @@ const ChatView = ({
 		setAttachments([]);
 	};
 
+	const handlePaste = useCallback(
+		(event: ClipboardEvent<HTMLTextAreaElement>) => {
+			const clipboardData = event.clipboardData;
+			const imageItems = Array.from(clipboardData?.items ?? []).filter(
+				(item) => item.kind === "file" && item.type.startsWith("image/"),
+			);
+			if (imageItems.length === 0) {
+				return;
+			}
+			if (!clipboardData?.getData("text/plain")) {
+				event.preventDefault();
+			}
+			for (const item of imageItems) {
+				const file = item.getAsFile();
+				if (file) {
+					void handleFileInput(file);
+				}
+			}
+		},
+		[handleFileInput],
+	);
+
 	return (
 		<div className="flex flex-col h-full min-h-0">
 			<div
@@ -256,6 +279,7 @@ const ChatView = ({
 							onChange={(event) => {
 								setPrompt(event.target.value);
 							}}
+							onPaste={handlePaste}
 							onCompositionStart={() => {
 								isComposing.current = true;
 							}}
