@@ -3,10 +3,14 @@ import {
 	Button,
 	Group,
 	Modal,
+	NavLink,
 	PasswordInput,
 	Progress,
 	Select,
+	Stack,
+	Text,
 	TextInput,
+	Title,
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -24,6 +28,8 @@ interface SettingsModalProps {
 	open: boolean;
 	onClose: () => void;
 }
+
+type SettingsTab = "general" | "provider";
 
 const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	const {
@@ -55,6 +61,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				providerKind,
 			},
 		});
+
+	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 	const selectedProvider = watch("providerKind");
 	const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 	const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -156,6 +164,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			setIsDownloading(false);
 			setDownloadProgress(null);
 			setDownloadError(null);
+			setActiveTab("general");
 		}
 	}, [open]);
 
@@ -186,54 +195,55 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		}
 	}, [builtInAvailability]);
 
-	return (
-		<Modal opened={open} onClose={onClose} title="Settings">
-			<form
-				onSubmit={handleSubmit(async (values) => {
-					await saveSettings(values);
-					onClose();
-				})}
-			>
-				<Select
-					label="Provider"
-					data={[
-						{ label: "OpenAI-Compatible", value: "openai-compatible" },
-						{ label: "Built-in AI (Chrome/Edge)", value: "built-in" },
-					]}
-					value={selectedProvider}
-					onChange={(value) => {
-						if (value) {
-							setValue("providerKind", value as ProviderKind);
-						}
-					}}
-					withAsterisk
-					mb="md"
-				/>
-				{selectedProvider === "openai-compatible" ? (
-					<>
-						<TextInput
-							label="OpenAI-Compatible API Base"
-							placeholder="https://.../v1"
-							type="url"
-							{...register("baseURL", {
-								required: selectedProvider === "openai-compatible",
-							})}
-						/>
-						<PasswordInput
-							mt="md"
-							label="API Key"
-							placeholder="sk-..."
-							withAsterisk
-							{...register("apiKey", {
-								required: selectedProvider === "openai-compatible",
-							})}
-						/>
-					</>
-				) : null}
-				{selectedProvider === "openai-compatible" && (
-					<div className="flex items-center justify-between mt-4">
-						<p>Models</p>
+	const renderGeneralTab = () => (
+		<Stack gap="md">
+			<Title order={4}>General Settings</Title>
+			<Text c="dimmed" size="sm">
+				General application settings will appear here.
+			</Text>
+		</Stack>
+	);
+
+	const renderProviderTab = () => (
+		<Stack gap="md">
+			<Title order={4}>AI Provider</Title>
+			<Select
+				label="Provider"
+				data={[
+					{ label: "OpenAI-Compatible", value: "openai-compatible" },
+					{ label: "Built-in AI (Chrome/Edge)", value: "built-in" },
+				]}
+				value={selectedProvider}
+				onChange={(value) => {
+					if (value) {
+						setValue("providerKind", value as ProviderKind);
+					}
+				}}
+				withAsterisk
+			/>
+			{selectedProvider === "openai-compatible" ? (
+				<>
+					<TextInput
+						label="OpenAI-Compatible API Base"
+						placeholder="https://.../v1"
+						type="url"
+						{...register("baseURL", {
+							required: selectedProvider === "openai-compatible",
+						})}
+					/>
+					<PasswordInput
+						label="API Key"
+						placeholder="sk-..."
+						withAsterisk
+						{...register("apiKey", {
+							required: selectedProvider === "openai-compatible",
+						})}
+					/>
+					<div className="flex items-center justify-between mt-2">
+						<Text size="sm">Models</Text>
 						<Button
+							variant="light"
+							size="xs"
 							onClick={() => {
 								void syncModels();
 							}}
@@ -241,45 +251,93 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							Sync from API
 						</Button>
 					</div>
-				)}
-				{selectedProvider === "built-in" && (
-					<div className="mt-4 space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
-						<p className="text-sm text-slate-600">
-							Model status:{" "}
-							<span className="font-semibold">{builtInStatusLabel}</span>
-						</p>
-						<Group gap="xs">
-							<Button
-								onClick={() => {
-									void handleDownloadModel();
-								}}
-								loading={isDownloading}
-								disabled={
-									isDownloading || builtInAvailability !== "downloadable"
-								}
-							>
-								{builtInAvailability === "available"
-									? "Model downloaded"
-									: builtInAvailability === "downloading"
-										? "Downloading..."
-										: "Download model"}
-							</Button>
-						</Group>
-						{isDownloading ? (
-							<Progress
-								value={(downloadProgress ?? 0) * 100}
-								size="sm"
-								radius="xl"
-							/>
-						) : null}
-						{downloadError ? (
-							<p className="text-sm text-red-600">{downloadError}</p>
-						) : null}
+				</>
+			) : null}
+			{selectedProvider === "built-in" && (
+				<div className="mt-2 space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
+					<p className="text-sm text-slate-600">
+						Model status:{" "}
+						<span className="font-semibold">{builtInStatusLabel}</span>
+					</p>
+					<Group gap="xs">
+						<Button
+							onClick={() => {
+								void handleDownloadModel();
+							}}
+							loading={isDownloading}
+							disabled={isDownloading || builtInAvailability !== "downloadable"}
+						>
+							{builtInAvailability === "available"
+								? "Model downloaded"
+								: builtInAvailability === "downloading"
+									? "Downloading..."
+									: "Download model"}
+						</Button>
+					</Group>
+					{isDownloading ? (
+						<Progress
+							value={(downloadProgress ?? 0) * 100}
+							size="sm"
+							radius="xl"
+						/>
+					) : null}
+					{downloadError ? (
+						<p className="text-sm text-red-600">{downloadError}</p>
+					) : null}
+				</div>
+			)}
+		</Stack>
+	);
+
+	return (
+		<Modal
+			opened={open}
+			onClose={onClose}
+			title="Settings"
+			size="lg"
+			styles={{
+				body: { height: "500px", display: "flex", padding: 0 },
+			}}
+		>
+			<form
+				onSubmit={handleSubmit(async (values) => {
+					await saveSettings(values);
+					onClose();
+				})}
+				className="flex flex-1 h-full"
+			>
+				{/* Sidebar */}
+				<div className="w-48 border-r border-gray-200 bg-gray-50 p-2 flex flex-col gap-1">
+					<NavLink
+						label="General"
+						leftSection={
+							<span className="i-lucide-sliders-horizontal w-4 h-4" />
+						}
+						active={activeTab === "general"}
+						onClick={() => setActiveTab("general")}
+						variant="light"
+						className="rounded-md"
+					/>
+					<NavLink
+						label="Provider"
+						leftSection={<span className="i-lucide-cloud w-4 h-4" />}
+						active={activeTab === "provider"}
+						onClick={() => setActiveTab("provider")}
+						variant="light"
+						className="rounded-md"
+					/>
+				</div>
+
+				{/* Content */}
+				<div className="flex-1 flex flex-col">
+					<div className="flex-1 p-4 overflow-y-auto">
+						{activeTab === "general" && renderGeneralTab()}
+						{activeTab === "provider" && renderProviderTab()}
 					</div>
-				)}
-				<Group justify="flex-end" mt="md">
-					<Button type="submit">Save</Button>
-				</Group>
+					<div className="p-4 border-t border-gray-200 bg-white flex justify-end">
+						<Button type="submit">Save Changes</Button>
+					</div>
+				</div>
 			</form>
 		</Modal>
 	);

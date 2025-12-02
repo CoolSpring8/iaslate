@@ -3,12 +3,7 @@ import { get as getValue, set as setValue } from "idb-keyval";
 import { toast } from "sonner";
 import { create } from "zustand";
 import { fetchOpenAICompatibleModels } from "../ai/openaiCompatible";
-import {
-	apiKeyKey,
-	baseURLKey,
-	modelsKey,
-	providerKindKey,
-} from "../constants/storageKeys";
+import { settingsKey } from "../constants/storageKeys";
 import type { BuiltInAvailability, ModelInfo, ProviderKind } from "../types";
 
 interface SettingsState {
@@ -57,36 +52,34 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 		}
 	},
 	hydrate: async () => {
-		const [storedProvider, storedBaseURL, storedAPIKey, storedModels] =
-			await Promise.all([
-				getValue<ProviderKind>(providerKindKey),
-				getValue<string>(baseURLKey),
-				getValue<string>(apiKeyKey),
-				getValue<ModelInfo[]>(modelsKey),
-			]);
-		set({
-			providerKind: storedProvider ?? "openai-compatible",
-			baseURL: storedBaseURL ?? "",
-			apiKey: storedAPIKey ?? "",
-			models: storedModels ?? [],
-			activeModel: storedModels?.at(0)?.id ?? null,
-			isHydrated: true,
-		});
-		if (!storedModels?.length && storedBaseURL) {
-			await get().syncModels({
-				baseURLOverride: storedBaseURL,
-				apiKeyOverride: storedAPIKey,
-				silent: true,
+		const storedSettings = await getValue<{
+			baseURL: string;
+			apiKey: string;
+			providerKind: ProviderKind;
+			models: ModelInfo[];
+		}>(settingsKey);
+
+		if (storedSettings) {
+			set({
+				...storedSettings,
+				activeModel: storedSettings.models?.at(0)?.id ?? null,
+				isHydrated: true,
 			});
+		} else {
+			// Initialize with defaults if no settings found
+			set({ isHydrated: true });
 		}
 	},
 	saveSettings: async ({ baseURL, apiKey, providerKind }) => {
-		set({ baseURL, apiKey, providerKind });
-		await Promise.all([
-			setValue(baseURLKey, baseURL),
-			setValue(apiKeyKey, apiKey),
-			setValue(providerKindKey, providerKind),
-		]);
+		const currentSettings = {
+			baseURL,
+			apiKey,
+			providerKind,
+			models: get().models,
+		};
+		set(currentSettings);
+		await setValue(settingsKey, currentSettings);
+
 		if (providerKind === "openai-compatible") {
 			await get().syncModels({
 				baseURLOverride: baseURL,
@@ -122,7 +115,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 				apiKey: targetAPIKey,
 			});
 			set({ models: fetchedModels });
-			await setValue(modelsKey, fetchedModels);
+
+			// Update storage with new models
+			const currentSettings = {
+				baseURL: get().baseURL,
+				apiKey: get().apiKey,
+				providerKind: get().providerKind,
+				models: fetchedModels,
+			};
+			await setValue(settingsKey, currentSettings);
+
 			const currentModel = get().activeModel;
 			const currentModelStillValid = fetchedModels.some(
 				(model) => model.id === currentModel,
