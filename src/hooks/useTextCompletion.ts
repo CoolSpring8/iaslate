@@ -155,5 +155,6 @@ export const useTextCompletion = ({
 		cancel,
 		tokenLogprobs,
 		rerollFromToken,
+		seedText: seedRef.current,
 	};
 };

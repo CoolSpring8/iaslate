@@ -9,7 +9,7 @@ import type {
 	TokenAlternative,
 	TokenLogprob,
 } from "../types";
-import TokenChips from "./TokenChips";
+import TokenInlineRenderer from "./TokenInlineRenderer";
 
 interface MessageItemProps {
 	message: Message;
@@ -39,6 +39,7 @@ const MessageItem = ({
 	const [isHovered, setIsHovered] = useState(false);
 	const [hasBeenClicked, setHasBeenClicked] = useState(false);
 	const [isReasoningExpanded, setIsReasoningExpanded] = useState(true);
+	const [showTokens, setShowTokens] = useState(false);
 	const reasoningText = message.reasoning_content?.trim();
 	const contentParts: MessageContentPart[] =
 		typeof message.content === "string"
@@ -118,6 +119,13 @@ const MessageItem = ({
 									</div>
 								</Popover.Dropdown>
 							</Popover>
+							{tokenLogprobs && tokenLogprobs.length > 0 && (
+								<UnstyledButton
+									className="i-lucide-sparkles text-slate-400 hover:text-slate-600 transition"
+									title={showTokens ? "Hide token view" : "Show token view"}
+									onClick={() => setShowTokens((prev) => !prev)}
+								/>
+							)}
 						</>
 					)}
 				</div>
@@ -143,49 +151,40 @@ const MessageItem = ({
 						)}
 					</div>
 				)}
-				<div className="twp prose prose-p:whitespace-pre-wrap">
-					{contentParts.map((part, index) =>
-						part.type === "text" ? (
-							<Markdown
-								key={`${message._metadata.uuid}-text-${index}`}
-								remarkPlugins={[]}
-							>
-								{`${part.text}${
-									isLast && isGenerating && index === contentParts.length - 1
-										? "▪️"
-										: ""
-								}`}
-							</Markdown>
-						) : (
-							<div key={`${message._metadata.uuid}-image-${index}`}>
-								<img
-									src={part.image}
-									alt="User provided"
-									className="max-h-64 rounded border"
-								/>
-							</div>
-						),
-					)}
-				</div>
-				{tokenLogprobs && tokenLogprobs.length > 0 && (
-					<div className="mt-2 rounded-lg border border-solid border-slate-200 bg-white/70 p-2">
-						<div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-							<span>Token Probabilities</span>
-							{disableReroll && (
-								<span className="text-[10px] font-normal text-slate-400">
-									Finish streaming to reroll
-								</span>
-							)}
-						</div>
-						<TokenChips
-							tokens={tokenLogprobs}
-							onSelectAlternative={
-								onRerollToken
-									? (index, alternative) => onRerollToken(index, alternative)
-									: undefined
-							}
-							disabled={disableReroll || !onRerollToken}
-						/>
+				{showTokens && tokenLogprobs && tokenLogprobs.length > 0 ? (
+					<TokenInlineRenderer
+						tokens={tokenLogprobs}
+						onSelectAlternative={
+							onRerollToken
+								? (index, alternative) => onRerollToken(index, alternative)
+								: undefined
+						}
+						disabled={disableReroll || !onRerollToken}
+					/>
+				) : (
+					<div className="twp prose prose-p:whitespace-pre-wrap">
+						{contentParts.map((part, index) =>
+							part.type === "text" ? (
+								<Markdown
+									key={`${message._metadata.uuid}-text-${index}`}
+									remarkPlugins={[]}
+								>
+									{`${part.text}${
+										isLast && isGenerating && index === contentParts.length - 1
+											? "▪️"
+											: ""
+									}`}
+								</Markdown>
+							) : (
+								<div key={`${message._metadata.uuid}-image-${index}`}>
+									<img
+										src={part.image}
+										alt="User provided"
+										className="max-h-64 rounded border"
+									/>
+								</div>
+							),
+						)}
 					</div>
 				)}
 			</div>

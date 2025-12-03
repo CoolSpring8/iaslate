@@ -129,6 +129,7 @@ const App = () => {
 		cancel,
 		tokenLogprobs: textTokenLogprobs,
 		rerollFromToken: rerollTextFromToken,
+		seedText: textSeed,
 	} = useTextCompletion({
 		ensureCompletionReady,
 	});
@@ -250,6 +251,8 @@ const App = () => {
 							onCancel={cancel}
 							tokenLogprobs={textTokenLogprobs}
 							onTokenReroll={rerollTextFromToken}
+							showTokenOverlay
+							generatedPrefix={textSeed}
 						/>
 					)}
 					<SettingsModal open={isSettingsOpen} onClose={onSettingsClose} />
