@@ -364,29 +364,28 @@ export const useConversationController = ({
 		) => {
 			const readiness = ensureChatReady();
 			if (!readiness) {
-				return;
+				return undefined;
 			}
 			if (readiness.kind !== "openai-compatible") {
 				toast.error("Token rerolls require an OpenAI-compatible provider");
-				return;
+				return undefined;
 			}
 			if (isGenerating) {
-				toast.error("Stop the current generation before rerolling");
-				return;
+				abortActiveStreams();
 			}
 			const { nodes } = useConversationTree.getState();
 			const target = nodes[messageId];
 			if (!target || target.role !== "assistant") {
-				return;
+				return undefined;
 			}
 			const parentId = predecessorOf(messageId);
 			if (!parentId) {
-				return;
+				return undefined;
 			}
 			const existingTokens = target.tokenLogprobs ?? [];
 			const targetToken = existingTokens[tokenIndex];
 			if (!targetToken) {
-				return;
+				return undefined;
 			}
 			const prefixTokens = existingTokens.slice(0, tokenIndex);
 			const replacementEntry: TokenLogprob = {
@@ -410,43 +409,47 @@ export const useConversationController = ({
 			});
 			const abortController = new AbortController();
 			streamManager.register(assistantId, abortController);
-			try {
-				setIsGenerating(true);
-				const stream = streamChatCompletionWithProbs({
-					baseURL: readiness.baseURL,
-					apiKey: readiness.apiKey,
-					model: readiness.modelId,
-					messages: toOpenAIChatMessages(compilePathTo(parentId), {
-						assistantPrefix: seedText,
-					}),
-					signal: abortController.signal,
-				});
-				for await (const chunk of stream) {
-					if (chunk.content) {
-						appendToNode(assistantId, {
-							content: chunk.content,
-							reasoning: chunk.reasoning,
-							tokenLogprobs: chunk.tokenLogprobs,
-						});
-					} else if (chunk.reasoning) {
-						appendToNode(assistantId, { reasoning: chunk.reasoning });
+			void (async () => {
+				try {
+					setIsGenerating(true);
+					const stream = streamChatCompletionWithProbs({
+						baseURL: readiness.baseURL,
+						apiKey: readiness.apiKey,
+						model: readiness.modelId,
+						messages: toOpenAIChatMessages(compilePathTo(parentId), {
+							assistantPrefix: seedText,
+						}),
+						signal: abortController.signal,
+					});
+					for await (const chunk of stream) {
+						if (chunk.content) {
+							appendToNode(assistantId, {
+								content: chunk.content,
+								reasoning: chunk.reasoning,
+								tokenLogprobs: chunk.tokenLogprobs,
+							});
+						} else if (chunk.reasoning) {
+							appendToNode(assistantId, { reasoning: chunk.reasoning });
+						}
 					}
+					setNodeStatus(assistantId, "final");
+				} catch (error) {
+					if (abortController.signal.aborted) {
+						setNodeStatus(assistantId, "draft");
+					} else {
+						setNodeStatus(assistantId, "error");
+						toast.error("Failed to regenerate from token");
+						console.error(error);
+					}
+				} finally {
+					setIsGenerating(false);
+					streamManager.clearLatestIf(assistantId);
 				}
-				setNodeStatus(assistantId, "final");
-			} catch (error) {
-				if (abortController.signal.aborted) {
-					setNodeStatus(assistantId, "draft");
-				} else {
-					setNodeStatus(assistantId, "error");
-					toast.error("Failed to regenerate from token");
-					console.error(error);
-				}
-			} finally {
-				setIsGenerating(false);
-				streamManager.clearLatestIf(assistantId);
-			}
+			})();
+			return assistantId;
 		},
 		[
+			abortActiveStreams,
 			appendToNode,
 			compilePathTo,
 			createAssistantAfter,

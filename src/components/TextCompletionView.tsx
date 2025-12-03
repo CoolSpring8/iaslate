@@ -1,5 +1,5 @@
 import { Button, Textarea } from "@mantine/core";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TokenAlternative, TokenLogprob } from "../types";
 import TokenInlineRenderer from "./TokenInlineRenderer";
 
@@ -31,12 +31,21 @@ const TextCompletionView = ({
 	generatedPrefix = "",
 }: TextCompletionViewProps) => {
 	const [showTokens, setShowTokens] = useState(false);
+	const prevTokenCountRef = useRef(0);
 
 	const prefixText =
 		generatedPrefix && value.startsWith(generatedPrefix) ? generatedPrefix : "";
 
 	const generatedTail =
 		prefixText.length > 0 ? value.slice(prefixText.length) : value;
+
+	useEffect(() => {
+		const nextCount = tokenLogprobs?.length ?? 0;
+		if (nextCount > 0 && prevTokenCountRef.current === 0) {
+			setShowTokens(true);
+		}
+		prevTokenCountRef.current = nextCount;
+	}, [tokenLogprobs?.length]);
 
 	return (
 		<div className="flex flex-1 min-h-0 flex-col gap-6 px-6 py-4">
@@ -61,18 +70,18 @@ const TextCompletionView = ({
 						{prefixText.length > 0 && (
 							<span className="whitespace-pre-wrap">{prefixText}</span>
 						)}
-						{showTokenOverlay && (
+						{showTokenOverlay ? (
 							<TokenInlineRenderer
+								inline
 								tokens={tokenLogprobs}
 								onSelectAlternative={
 									onTokenReroll
 										? (index, alternative) => onTokenReroll(index, alternative)
 										: undefined
 								}
-								disabled={isPredictDisabled || isGenerating || !onTokenReroll}
+								disabled={isPredictDisabled || !onTokenReroll}
 							/>
-						)}
-						{!tokenLogprobs?.length && (
+						) : (
 							<span className="whitespace-pre-wrap">{generatedTail}</span>
 						)}
 					</div>
@@ -91,29 +100,6 @@ const TextCompletionView = ({
 								"h-full min-h-[18rem] resize-none overflow-y-auto border-none bg-transparent text-lg leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none dark:text-slate-100",
 						}}
 					/>
-				)}
-				{tokenLogprobs && tokenLogprobs.length > 0 && !showTokens && (
-					<div className="mt-3 rounded-xl border border-solid border-slate-200 bg-white/70 p-3 shadow-sm dark:bg-slate-900/60">
-						<div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-							Token Probabilities
-							{isGenerating && (
-								<span className="text-[10px] font-normal text-slate-400">
-									Reroll after streaming finishes
-								</span>
-							)}
-						</div>
-						{showTokenOverlay && (
-							<TokenInlineRenderer
-								tokens={tokenLogprobs}
-								onSelectAlternative={
-									onTokenReroll
-										? (index, alternative) => onTokenReroll(index, alternative)
-										: undefined
-								}
-								disabled={isPredictDisabled || isGenerating || !onTokenReroll}
-							/>
-						)}
-					</div>
 				)}
 			</div>
 			<div className="flex justify-end">

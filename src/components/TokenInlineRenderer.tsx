@@ -8,6 +8,7 @@ interface TokenInlineRendererProps {
 	onSelectAlternative?: (index: number, alternative: TokenAlternative) => void;
 	disabled?: boolean;
 	className?: string;
+	inline?: boolean;
 }
 
 const formatToken = (token: string) =>
@@ -18,10 +19,12 @@ const TokenInlineRenderer = ({
 	onSelectAlternative,
 	disabled = false,
 	className,
+	inline = false,
 }: TokenInlineRendererProps) => {
 	const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 	const [isDropdownHover, setIsDropdownHover] = useState(false);
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const Container = inline ? "span" : "div";
 
 	const visibleTokens = useMemo(
 		() => tokens.filter((token) => token.token.length > 0),
@@ -40,9 +43,10 @@ const TokenInlineRenderer = ({
 	};
 
 	return (
-		<div
+		<Container
 			className={twJoin(
-				"relative w-full whitespace-pre-wrap font-sans text-base leading-8 text-[#374151] dark:text-slate-100",
+				"relative whitespace-pre-wrap font-sans text-base leading-8 text-[#374151] dark:text-slate-100",
+				inline ? "inline" : "w-full",
 				className,
 			)}
 		>
@@ -138,7 +142,7 @@ const TokenInlineRenderer = ({
 					</Popover>
 				);
 			})}
-		</div>
+		</Container>
 	);
 };
 

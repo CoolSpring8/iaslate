@@ -16,12 +16,14 @@ interface MessageItemProps {
 	isEditing: boolean;
 	isLast: boolean;
 	isGenerating: boolean;
+	showTokens?: boolean;
 	onEdit: () => void;
 	onDelete: () => void;
 	onDetach: () => void;
 	tokenLogprobs?: TokenLogprob[];
 	onRerollToken?: (tokenIndex: number, replacement: TokenAlternative) => void;
 	disableReroll?: boolean;
+	onShowTokensChange?: (show: boolean) => void;
 }
 
 const MessageItem = ({
@@ -29,17 +31,28 @@ const MessageItem = ({
 	isEditing,
 	isLast,
 	isGenerating,
+	showTokens,
 	onEdit,
 	onDelete,
 	onDetach,
 	tokenLogprobs,
 	onRerollToken,
 	disableReroll = false,
+	onShowTokensChange,
 }: MessageItemProps) => {
 	const [isHovered, setIsHovered] = useState(false);
 	const [hasBeenClicked, setHasBeenClicked] = useState(false);
 	const [isReasoningExpanded, setIsReasoningExpanded] = useState(true);
-	const [showTokens, setShowTokens] = useState(false);
+	const [internalShowTokens, setInternalShowTokens] = useState(false);
+	const isTokenView = showTokens ?? internalShowTokens;
+	const setTokenView = (value: boolean) => {
+		if (onShowTokensChange) {
+			onShowTokensChange(value);
+			return;
+		}
+		setInternalShowTokens(value);
+	};
+	const toggleTokenView = () => setTokenView(!isTokenView);
 	const reasoningText = message.reasoning_content?.trim();
 	const contentParts: MessageContentPart[] =
 		typeof message.content === "string"
@@ -122,8 +135,8 @@ const MessageItem = ({
 							{tokenLogprobs && tokenLogprobs.length > 0 && (
 								<UnstyledButton
 									className="i-lucide-sparkles text-slate-400 hover:text-slate-600 transition"
-									title={showTokens ? "Hide token view" : "Show token view"}
-									onClick={() => setShowTokens((prev) => !prev)}
+									title={isTokenView ? "Hide token view" : "Show token view"}
+									onClick={toggleTokenView}
 								/>
 							)}
 						</>
@@ -151,7 +164,7 @@ const MessageItem = ({
 						)}
 					</div>
 				)}
-				{showTokens && tokenLogprobs && tokenLogprobs.length > 0 ? (
+				{isTokenView && tokenLogprobs && tokenLogprobs.length > 0 ? (
 					<TokenInlineRenderer
 						tokens={tokenLogprobs}
 						onSelectAlternative={
