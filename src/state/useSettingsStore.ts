@@ -11,15 +11,15 @@ import { v4 as uuidv4 } from "uuid";
 type StoredSettings = {
 	providers: ProviderEntry[];
 	activeProviderId: string | null;
-	models: ModelInfo[];
 	enableBeforeUnloadWarning: boolean;
+	// Legacy fields retained for backward compatibility; they are ignored in favor of per-provider storage
+	models?: ModelInfo[];
+	activeModel?: string | null;
 };
 
 interface SettingsState {
 	providers: ProviderEntry[];
 	activeProviderId: string | null;
-	models: ModelInfo[];
-	activeModel: string | null;
 	enableBeforeUnloadWarning: boolean;
 	builtInAvailability: BuiltInAvailability;
 	isHydrated: boolean;
@@ -43,12 +43,10 @@ interface SettingsState {
 
 export const useSettingsStore = create<SettingsState>((set, get) => {
 	const persistSettings = async (overrides: Partial<StoredSettings> = {}) => {
-		const { providers, activeProviderId, models, enableBeforeUnloadWarning } =
-			get();
+		const { providers, activeProviderId, enableBeforeUnloadWarning } = get();
 		await setValue(settingsKey, {
 			providers,
 			activeProviderId,
-			models,
 			enableBeforeUnloadWarning,
 			...overrides,
 		});
@@ -57,12 +55,41 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 	return {
 		providers: [],
 		activeProviderId: null,
-		models: [],
-		activeModel: null,
 		enableBeforeUnloadWarning: true,
 		builtInAvailability: "unknown",
 		isHydrated: false,
-		setActiveModel: (model) => set({ activeModel: model }),
+		setActiveModel: (model) => {
+			const { activeProviderId, providers } = get();
+			if (!activeProviderId) {
+				return;
+			}
+
+			let didChange = false;
+			const updatedProviders = providers.map((provider) => {
+				if (provider.id !== activeProviderId) {
+					return provider;
+				}
+				if (
+					model &&
+					provider.models &&
+					provider.models.every((entry) => entry.id !== model)
+				) {
+					return provider;
+				}
+				if (provider.activeModelId === model) {
+					return provider;
+				}
+				didChange = true;
+				return { ...provider, activeModelId: model };
+			});
+
+			if (!didChange) {
+				return;
+			}
+
+			set({ providers: updatedProviders });
+			void persistSettings({ providers: updatedProviders });
+		},
 		setEnableBeforeUnloadWarning: async (enabled) => {
 			set({ enableBeforeUnloadWarning: enabled });
 			await persistSettings({ enableBeforeUnloadWarning: enabled });
@@ -83,8 +110,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
 			if (storedSettings) {
 				set({
-					...storedSettings,
-					activeModel: storedSettings.models?.at(0)?.id ?? null,
+					providers: storedSettings.providers ?? [],
+					activeProviderId: storedSettings.activeProviderId ?? null,
 					enableBeforeUnloadWarning:
 						storedSettings.enableBeforeUnloadWarning ?? true,
 					isHydrated: true,
@@ -94,7 +121,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			}
 		},
 		addProvider: async (entry) => {
-			const newProvider = { ...entry, id: uuidv4() };
+			const newProvider = {
+				...entry,
+				id: uuidv4(),
+				models: [],
+				activeModelId: null,
+			};
 			const { providers } = get();
 			const newProviders = [...providers, newProvider];
 
@@ -108,22 +140,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			}
 		},
 		updateProvider: async (id, updates) => {
-			const { providers, activeProviderId } = get();
+			const { providers } = get();
 			const newProviders = providers.map((p) =>
 				p.id === id ? { ...p, ...updates } : p,
 			);
 			set({ providers: newProviders });
 
 			await persistSettings({ providers: newProviders });
-
-			// If updating active provider, re-sync might be needed, but we'll let user trigger it manually or on switch
-			if (id === activeProviderId && updates.config) {
-				// Optional: auto-sync or clear models?
-				// For now, let's just clear models if base URL changed to avoid mismatch
-				if (updates.config.baseURL) {
-					set({ models: [], activeModel: null });
-				}
-			}
 		},
 		removeProvider: async (id) => {
 			const { providers, activeProviderId } = get();
@@ -132,7 +155,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
 			if (activeProviderId === id) {
 				newActiveId = newProviders[0]?.id ?? null;
-				set({ models: [], activeModel: null });
 			}
 
 			set({ providers: newProviders, activeProviderId: newActiveId });
@@ -151,8 +173,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			await persistSettings({ activeProviderId: id });
 			if (id) {
 				await get().syncModels({ silent: true, force: true });
-			} else {
-				set({ models: [], activeModel: null });
 			}
 		},
 		syncModels: async ({ silent = false, force = false } = {}) => {
@@ -170,6 +190,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			const targetBaseURL = activeProvider.config.baseURL?.trim();
 			const targetAPIKey = activeProvider.config.apiKey;
 
+			if (activeProvider.kind !== "openai-compatible") {
+				return [];
+			}
+
 			if (!targetBaseURL) {
 				if (!silent) {
 					toast.error("Set an API base URL before syncing");
@@ -182,17 +206,27 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 					baseURL: targetBaseURL,
 					apiKey: targetAPIKey || "",
 				});
-				set({ models: fetchedModels });
-
-				await persistSettings({ models: fetchedModels });
-
-				const currentModel = get().activeModel;
+				const currentModel = activeProvider.activeModelId;
 				const currentModelStillValid = fetchedModels.some(
 					(model) => model.id === currentModel,
 				);
 				const nextModelId =
-					(currentModelStillValid && currentModel) || fetchedModels.at(0)?.id;
-				set({ activeModel: nextModelId ?? null });
+					(currentModelStillValid && currentModel) ||
+					fetchedModels.at(0)?.id ||
+					null;
+				const updatedProviders = providers.map((provider) =>
+					provider.id === activeProviderId
+						? {
+								...provider,
+								models: fetchedModels,
+								activeModelId: nextModelId,
+							}
+						: provider,
+				);
+
+				set({ providers: updatedProviders });
+
+				await persistSettings({ providers: updatedProviders });
 				if (!silent) {
 					toast.success("Synced models");
 				}

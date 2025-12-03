@@ -36,6 +36,8 @@ export interface ProviderEntry {
 		baseURL?: string;
 		apiKey?: string;
 	};
+	models?: ModelInfo[];
+	activeModelId?: string | null;
 }
 
 export type BuiltInAvailability =

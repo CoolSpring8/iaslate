@@ -18,16 +18,15 @@ import { useEnsureSystemMessage } from "./hooks/useEnsureSystemMessage";
 import { useProviderReadiness } from "./hooks/useProviderReadiness";
 import { useTextCompletion } from "./hooks/useTextCompletion";
 import { useSettingsStore } from "./state/useSettingsStore";
-import type { AppView } from "./types";
+import type { AppView, ModelInfo } from "./types";
 
 const defaultSystemPrompt = "You are a helpful assistant.";
+const emptyModels: ModelInfo[] = [];
 
 const App = () => {
 	const {
 		providers,
 		activeProviderId,
-		models,
-		activeModel,
 		setActiveModel,
 		enableBeforeUnloadWarning,
 		builtInAvailability,
@@ -37,8 +36,6 @@ const App = () => {
 		useShallow((state) => ({
 			providers: state.providers,
 			activeProviderId: state.activeProviderId,
-			models: state.models,
-			activeModel: state.activeModel,
 			setActiveModel: state.setActiveModel,
 			enableBeforeUnloadWarning: state.enableBeforeUnloadWarning,
 			builtInAvailability: state.builtInAvailability,
@@ -52,6 +49,9 @@ const App = () => {
 		() => providers.find((p) => p.id === activeProviderId),
 		[providers, activeProviderId],
 	);
+
+	const models = activeProvider?.models ?? emptyModels;
+	const activeModel = activeProvider?.activeModelId ?? null;
 
 	const providerKind = activeProvider?.kind ?? "openai-compatible";
 
