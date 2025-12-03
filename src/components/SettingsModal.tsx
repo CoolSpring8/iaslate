@@ -1,7 +1,6 @@
 import { builtInAI } from "@built-in-ai/core";
 import {
 	ActionIcon,
-	Badge,
 	Button,
 	Card,
 	Group,

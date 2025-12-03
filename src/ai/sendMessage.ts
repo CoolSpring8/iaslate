@@ -1,6 +1,15 @@
-import { type LanguageModel, type ModelMessage, streamText } from "ai";
+import { type ModelMessage, streamText } from "ai";
 import type { StreamManager } from "../hooks/useStreamManager";
-import type { ChatProviderReady, Message, MessageContent } from "../types";
+import type {
+	ChatProviderReady,
+	Message,
+	MessageContent,
+	TokenLogprob,
+} from "../types";
+import {
+	streamChatCompletionWithProbs,
+	toOpenAIChatMessages,
+} from "./openaiLogprobStream";
 
 export interface SendMessageContext {
 	provider: ChatProviderReady;
@@ -16,7 +25,11 @@ export interface SendMessageContext {
 	setActiveTarget: (id: string) => void;
 	appendToNode: (
 		nodeId: string,
-		delta: { content?: string; reasoning?: string },
+		delta: {
+			content?: string;
+			reasoning?: string;
+			tokenLogprobs?: TokenLogprob[];
+		},
 	) => void;
 	compilePathTo: (nodeId: string) => Message[];
 	streamManager: StreamManager;
@@ -51,10 +64,6 @@ export const sendMessage = async (
 		defaultSystemPrompt,
 	}: SendMessageContext,
 ) => {
-	const model: LanguageModel =
-		provider.kind === "openai-compatible"
-			? provider.openAIProvider.chatModel(provider.modelId)
-			: provider.getBuiltInChatModel();
 	const hasContent = hasMessageContent(promptContent);
 	let resolvedParentId = activeTail() ?? activeTargetId;
 	if (!resolvedParentId) {
@@ -66,7 +75,9 @@ export const sendMessage = async (
 	const contextMessages = compilePathTo(resolvedParentId);
 	const lastMessage = contextMessages[contextMessages.length - 1];
 	const shouldAppendToAssistant =
-		!hasContent && lastMessage?.role === "assistant";
+		provider.kind === "built-in" &&
+		!hasContent &&
+		lastMessage?.role === "assistant";
 	const assistantId = shouldAppendToAssistant
 		? lastMessage._metadata.uuid
 		: createAssistantAfter(resolvedParentId);
@@ -76,44 +87,69 @@ export const sendMessage = async (
 	setActiveTarget(assistantId);
 	const abortController = new AbortController();
 	streamManager.register(assistantId, abortController);
-	const modelMessages = contextMessages
-		.filter((message) => message.role !== "tool")
-		.map((message) => {
-			const base = {
-				role: message.role as "system" | "user" | "assistant",
-				content: message.content,
-			};
-			if (shouldPrefixAssistant && message._metadata.uuid === assistantId) {
-				return {
-					...base,
-					providerOptions: {
-						"browser-ai": { prefix: true },
-					},
-				};
-			}
-			return base;
-		}) as ModelMessage[];
+	const filteredContext = contextMessages.filter(
+		(message) => message.role !== "tool",
+	);
 	try {
-		const stream = streamText({
-			model,
-			messages: modelMessages,
-			temperature: 0.3,
-			abortSignal: abortController.signal,
-		});
 		setIsGenerating(true);
-		for await (const part of stream.fullStream) {
-			if (part.type === "text-delta" && part.text) {
-				appendToNode(assistantId, {
-					content: part.text,
-				});
+		if (provider.kind === "built-in") {
+			const modelMessages = filteredContext.map((message) => {
+				const base = {
+					role: message.role as "system" | "user" | "assistant",
+					content: message.content,
+				};
+				if (shouldPrefixAssistant && message._metadata.uuid === assistantId) {
+					return {
+						...base,
+						providerOptions: {
+							"browser-ai": { prefix: true },
+						},
+					};
+				}
+				return base;
+			}) as ModelMessage[];
+			const stream = streamText({
+				model: provider.getBuiltInChatModel(),
+				messages: modelMessages,
+				temperature: 0.3,
+				abortSignal: abortController.signal,
+			});
+			for await (const part of stream.fullStream) {
+				if (part.type === "text-delta" && part.text) {
+					appendToNode(assistantId, {
+						content: part.text,
+					});
+				}
+				if (part.type === "reasoning-delta" && part.text) {
+					appendToNode(assistantId, {
+						reasoning: part.text,
+					});
+				}
 			}
-			if (part.type === "reasoning-delta" && part.text) {
-				appendToNode(assistantId, {
-					reasoning: part.text,
-				});
+			setNodeStatus(assistantId, "final");
+		} else {
+			const stream = streamChatCompletionWithProbs({
+				baseURL: provider.baseURL,
+				apiKey: provider.apiKey,
+				model: provider.modelId,
+				messages: toOpenAIChatMessages(filteredContext),
+				signal: abortController.signal,
+			});
+			for await (const part of stream) {
+				if (part.content) {
+					appendToNode(assistantId, {
+						content: part.content,
+						reasoning: part.reasoning,
+						tokenLogprobs: part.tokenLogprobs,
+					});
+				} else if (part.reasoning) {
+					appendToNode(assistantId, {
+						reasoning: part.reasoning,
+					});
+				}
 			}
+			setNodeStatus(assistantId, "final");
 		}
-		setNodeStatus(assistantId, "final");
 	} catch (error) {
 		if (abortController.signal.aborted) {
 			setNodeStatus(assistantId, "draft");

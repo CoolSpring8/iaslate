@@ -3,7 +3,13 @@ import { useState } from "react";
 import Markdown from "react-markdown";
 import { toast } from "sonner";
 import { twJoin } from "tailwind-merge";
-import type { Message, MessageContentPart } from "../types";
+import type {
+	Message,
+	MessageContentPart,
+	TokenAlternative,
+	TokenLogprob,
+} from "../types";
+import TokenChips from "./TokenChips";
 
 interface MessageItemProps {
 	message: Message;
@@ -13,6 +19,9 @@ interface MessageItemProps {
 	onEdit: () => void;
 	onDelete: () => void;
 	onDetach: () => void;
+	tokenLogprobs?: TokenLogprob[];
+	onRerollToken?: (tokenIndex: number, replacement: TokenAlternative) => void;
+	disableReroll?: boolean;
 }
 
 const MessageItem = ({
@@ -23,6 +32,9 @@ const MessageItem = ({
 	onEdit,
 	onDelete,
 	onDetach,
+	tokenLogprobs,
+	onRerollToken,
+	disableReroll = false,
 }: MessageItemProps) => {
 	const [isHovered, setIsHovered] = useState(false);
 	const [hasBeenClicked, setHasBeenClicked] = useState(false);
@@ -155,6 +167,27 @@ const MessageItem = ({
 						),
 					)}
 				</div>
+				{tokenLogprobs && tokenLogprobs.length > 0 && (
+					<div className="mt-2 rounded-lg border border-solid border-slate-200 bg-white/70 p-2">
+						<div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+							<span>Token Probabilities</span>
+							{disableReroll && (
+								<span className="text-[10px] font-normal text-slate-400">
+									Finish streaming to reroll
+								</span>
+							)}
+						</div>
+						<TokenChips
+							tokens={tokenLogprobs}
+							onSelectAlternative={
+								onRerollToken
+									? (index, alternative) => onRerollToken(index, alternative)
+									: undefined
+							}
+							disabled={disableReroll || !onRerollToken}
+						/>
+					</div>
+				)}
 			</div>
 		</div>
 	);

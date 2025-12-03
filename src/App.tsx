@@ -87,6 +87,8 @@ const App = () => {
 		activeModel,
 		openAIProvider,
 		getBuiltInChatModel,
+		baseURL: activeProvider?.config.baseURL ?? "",
+		apiKey: activeProvider?.config.apiKey ?? "",
 	});
 
 	const {
@@ -113,6 +115,7 @@ const App = () => {
 		isTreeEmpty,
 		createSystemMessage,
 		setActiveTarget,
+		rerollFromToken,
 	} = useConversationController({
 		defaultSystemPrompt,
 		ensureChatReady,
@@ -120,10 +123,12 @@ const App = () => {
 
 	const {
 		textContent,
-		setTextContent,
+		overwriteTextContent,
 		isGenerating: isTextGenerating,
 		predict,
 		cancel,
+		tokenLogprobs: textTokenLogprobs,
+		rerollFromToken: rerollTextFromToken,
 	} = useTextCompletion({
 		ensureCompletionReady,
 	});
@@ -167,8 +172,8 @@ const App = () => {
 	const handleClearConversation = useCallback(() => {
 		clearConversation();
 		cancel();
-		setTextContent("");
-	}, [cancel, clearConversation, setTextContent]);
+		overwriteTextContent("");
+	}, [cancel, clearConversation, overwriteTextContent]);
 
 	const handleImportPreparation = useCallback(() => {
 		abortActiveStreams();
@@ -217,6 +222,7 @@ const App = () => {
 								onEditCancel={cancelEdit}
 								onPromptDirtyChange={setIsPromptDirty}
 								resetSignal={resetSignal}
+								onTokenReroll={rerollFromToken}
 							/>
 						</div>
 					) : view === "diagram" ? (
@@ -238,10 +244,12 @@ const App = () => {
 									: undefined
 							}
 							onChange={(value) => {
-								setTextContent(value);
+								overwriteTextContent(value);
 							}}
 							onPredict={predict}
 							onCancel={cancel}
+							tokenLogprobs={textTokenLogprobs}
+							onTokenReroll={rerollTextFromToken}
 						/>
 					)}
 					<SettingsModal open={isSettingsOpen} onClose={onSettingsClose} />

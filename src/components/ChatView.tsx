@@ -4,7 +4,12 @@ import type { ClipboardEvent } from "react";
 import { toast } from "sonner";
 import { twJoin } from "tailwind-merge";
 import { useImmer } from "use-immer";
-import type { Message, MessageContent, MessageContentPart } from "../types";
+import type {
+	Message,
+	MessageContent,
+	MessageContentPart,
+	TokenAlternative,
+} from "../types";
 import MessageItem from "./MessageItem";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -25,6 +30,11 @@ interface ChatViewProps {
 	onEditCancel: () => void;
 	onPromptDirtyChange?: (dirty: boolean) => void;
 	resetSignal?: number;
+	onTokenReroll?: (
+		messageId: string,
+		tokenIndex: number,
+		alternative: TokenAlternative,
+	) => void;
 }
 
 const ChatView = ({
@@ -40,6 +50,7 @@ const ChatView = ({
 	onEditCancel,
 	onPromptDirtyChange,
 	resetSignal,
+	onTokenReroll,
 }: ChatViewProps) => {
 	const [prompt, setPrompt] = useImmer("");
 	const [attachments, setAttachments] = useImmer<MessageContentPart[]>([]);
@@ -226,6 +237,14 @@ const ChatView = ({
 						onEdit={() => onEditStart(message._metadata.uuid)}
 						onDelete={() => onDeleteMessage(message._metadata.uuid)}
 						onDetach={() => onDetachMessage(message._metadata.uuid)}
+						tokenLogprobs={message._metadata.tokenLogprobs}
+						onRerollToken={
+							onTokenReroll
+								? (index, alternative) =>
+										onTokenReroll(message._metadata.uuid, index, alternative)
+								: undefined
+						}
+						disableReroll={isGenerating}
 					/>
 				))}
 			</div>

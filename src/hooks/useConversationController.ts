@@ -1,9 +1,19 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import {
+	streamChatCompletionWithProbs,
+	toOpenAIChatMessages,
+} from "../ai/openaiLogprobStream";
 import { sendMessage } from "../ai/sendMessage";
 import { useConversationTree } from "../tree/useConversationTree";
-import type { ChatProviderReady, Message, MessageContent } from "../types";
+import type {
+	ChatProviderReady,
+	Message,
+	MessageContent,
+	TokenAlternative,
+	TokenLogprob,
+} from "../types";
 import { deleteMessage } from "../utils/chatActions";
 import { useStreamManager } from "./useStreamManager";
 
@@ -101,6 +111,51 @@ export const useConversationController = ({
 		[],
 	);
 
+	const areTokenLogprobsEqual = useCallback(
+		(a?: TokenLogprob[], b?: TokenLogprob[]) => {
+			if (a === b) {
+				return true;
+			}
+			if (!a || !b) {
+				return !a && !b;
+			}
+			if (a.length !== b.length) {
+				return false;
+			}
+			for (let index = 0; index < a.length; index++) {
+				const tokA = a[index];
+				const tokB = b[index];
+				if (!tokA || !tokB) {
+					return false;
+				}
+				if (
+					tokA.token !== tokB.token ||
+					tokA.probability !== tokB.probability
+				) {
+					return false;
+				}
+				if (tokA.alternatives.length !== tokB.alternatives.length) {
+					return false;
+				}
+				for (let j = 0; j < tokA.alternatives.length; j++) {
+					const altA = tokA.alternatives[j];
+					const altB = tokB.alternatives[j];
+					if (!altA || !altB) {
+						return false;
+					}
+					if (
+						altA.token !== altB.token ||
+						altA.probability !== altB.probability
+					) {
+						return false;
+					}
+				}
+			}
+			return true;
+		},
+		[],
+	);
+
 	const areMessagesEqual = useCallback(
 		(next: Message[], prev: Message[]) => {
 			if (next === prev) {
@@ -116,7 +171,11 @@ export const useConversationController = ({
 					a._metadata.uuid !== b._metadata.uuid ||
 					a.role !== b.role ||
 					!areContentsEqual(a.content, b.content) ||
-					a.reasoning_content !== b.reasoning_content
+					a.reasoning_content !== b.reasoning_content ||
+					!areTokenLogprobsEqual(
+						a._metadata.tokenLogprobs,
+						b._metadata.tokenLogprobs,
+					)
 				) {
 					return false;
 				}
@@ -267,6 +326,7 @@ export const useConversationController = ({
 		(nodeId: string, content: MessageContent) => {
 			const replacementId = replaceNodeWithEditedClone(nodeId, {
 				content,
+				tokenLogprobs: undefined,
 			});
 			if (!replacementId) {
 				return;
@@ -296,6 +356,110 @@ export const useConversationController = ({
 		[resetComposerState, setActiveTarget],
 	);
 
+	const handleRerollFromToken = useCallback(
+		async (
+			messageId: string,
+			tokenIndex: number,
+			replacement: TokenAlternative,
+		) => {
+			const readiness = ensureChatReady();
+			if (!readiness) {
+				return;
+			}
+			if (readiness.kind !== "openai-compatible") {
+				toast.error("Token rerolls require an OpenAI-compatible provider");
+				return;
+			}
+			if (isGenerating) {
+				toast.error("Stop the current generation before rerolling");
+				return;
+			}
+			const { nodes } = useConversationTree.getState();
+			const target = nodes[messageId];
+			if (!target || target.role !== "assistant") {
+				return;
+			}
+			const parentId = predecessorOf(messageId);
+			if (!parentId) {
+				return;
+			}
+			const existingTokens = target.tokenLogprobs ?? [];
+			const targetToken = existingTokens[tokenIndex];
+			if (!targetToken) {
+				return;
+			}
+			const prefixTokens = existingTokens.slice(0, tokenIndex);
+			const replacementEntry: TokenLogprob = {
+				token: replacement.token,
+				probability: replacement.probability,
+				alternatives: [
+					replacement,
+					...targetToken.alternatives.filter(
+						(alt) => alt.token !== replacement.token,
+					),
+				],
+			};
+			const seedTokens = [...prefixTokens, replacementEntry];
+			const seedText = seedTokens.map((entry) => entry.token).join("");
+			const assistantId = createAssistantAfter(parentId);
+			setNodeStatus(assistantId, "streaming");
+			setActiveTarget(assistantId);
+			appendToNode(assistantId, {
+				content: seedText,
+				tokenLogprobs: seedTokens,
+			});
+			const abortController = new AbortController();
+			streamManager.register(assistantId, abortController);
+			try {
+				setIsGenerating(true);
+				const stream = streamChatCompletionWithProbs({
+					baseURL: readiness.baseURL,
+					apiKey: readiness.apiKey,
+					model: readiness.modelId,
+					messages: toOpenAIChatMessages(compilePathTo(parentId), {
+						assistantPrefix: seedText,
+					}),
+					signal: abortController.signal,
+				});
+				for await (const chunk of stream) {
+					if (chunk.content) {
+						appendToNode(assistantId, {
+							content: chunk.content,
+							reasoning: chunk.reasoning,
+							tokenLogprobs: chunk.tokenLogprobs,
+						});
+					} else if (chunk.reasoning) {
+						appendToNode(assistantId, { reasoning: chunk.reasoning });
+					}
+				}
+				setNodeStatus(assistantId, "final");
+			} catch (error) {
+				if (abortController.signal.aborted) {
+					setNodeStatus(assistantId, "draft");
+				} else {
+					setNodeStatus(assistantId, "error");
+					toast.error("Failed to regenerate from token");
+					console.error(error);
+				}
+			} finally {
+				setIsGenerating(false);
+				streamManager.clearLatestIf(assistantId);
+			}
+		},
+		[
+			appendToNode,
+			compilePathTo,
+			createAssistantAfter,
+			ensureChatReady,
+			isGenerating,
+			predecessorOf,
+			setActiveTarget,
+			setIsGenerating,
+			setNodeStatus,
+			streamManager,
+		],
+	);
+
 	return {
 		chatMessages,
 		isGenerating,
@@ -321,5 +485,6 @@ export const useConversationController = ({
 		createSystemMessage,
 		setActiveTarget,
 		activeTail,
+		rerollFromToken: handleRerollFromToken,
 	};
 };
