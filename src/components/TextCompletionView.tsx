@@ -1,5 +1,5 @@
-import { Button, Textarea } from "@mantine/core";
-import { useEffect, useRef, useState } from "react";
+import { Button } from "@mantine/core";
+import { useRef, useState } from "react";
 import type { TokenAlternative, TokenLogprob } from "../types";
 import TokenInlineRenderer from "./TokenInlineRenderer";
 
@@ -27,11 +27,10 @@ const TextCompletionView = ({
 	onCancel,
 	tokenLogprobs,
 	onTokenReroll,
-	showTokenOverlay = true,
 	generatedPrefix = "",
 }: TextCompletionViewProps) => {
-	const [showTokens, setShowTokens] = useState(false);
-	const prevTokenCountRef = useRef(0);
+	const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	const prefixText =
 		generatedPrefix && value.startsWith(generatedPrefix) ? generatedPrefix : "";
@@ -39,13 +38,29 @@ const TextCompletionView = ({
 	const generatedTail =
 		prefixText.length > 0 ? value.slice(prefixText.length) : value;
 
-	useEffect(() => {
-		const nextCount = tokenLogprobs?.length ?? 0;
-		if (nextCount > 0 && prevTokenCountRef.current === 0) {
-			setShowTokens(true);
+	const handleMouseMove = (e: React.MouseEvent<HTMLTextAreaElement>) => {
+		if (!textareaRef.current) return;
+		// Temporarily disable pointer events on textarea to hit-test the overlay
+		const prevPointerEvents = textareaRef.current.style.pointerEvents;
+		textareaRef.current.style.pointerEvents = "none";
+		const element = document.elementFromPoint(e.clientX, e.clientY);
+		textareaRef.current.style.pointerEvents = prevPointerEvents;
+
+		if (element instanceof HTMLElement) {
+			const indexStr = element.getAttribute("data-token-index");
+			if (indexStr) {
+				setHoveredIndex(parseInt(indexStr, 10));
+			} else {
+				setHoveredIndex(null);
+			}
+		} else {
+			setHoveredIndex(null);
 		}
-		prevTokenCountRef.current = nextCount;
-	}, [tokenLogprobs?.length]);
+	};
+
+	const handleMouseLeave = () => {
+		setHoveredIndex(null);
+	};
 
 	return (
 		<div className="flex flex-1 min-h-0 flex-col gap-6 px-6 py-4">
@@ -53,54 +68,55 @@ const TextCompletionView = ({
 				<p className="text-sm font-medium text-slate-700 dark:text-slate-200">
 					Text Completion
 				</p>
-				{tokenLogprobs && tokenLogprobs.length > 0 && (
-					<Button
-						size="xs"
-						variant={showTokens ? "light" : "subtle"}
-						color="blue"
-						onClick={() => setShowTokens((prev) => !prev)}
-					>
-						{showTokens ? "Hide Token View" : "Token View"}
-					</Button>
-				)}
 			</div>
 			<div className="flex min-h-0 flex-1 flex-col rounded-2xl bg-slate-50/90 p-4 backdrop-blur dark:bg-slate-900/40">
-				{showTokens && tokenLogprobs && tokenLogprobs.length > 0 ? (
-					<div className="min-h-[18rem] whitespace-pre-wrap rounded-xl border border-solid border-slate-200 bg-white/70 p-3 font-sans text-lg leading-relaxed text-slate-900 shadow-sm dark:bg-slate-900/60 dark:text-slate-100">
-						{prefixText.length > 0 && (
-							<span className="whitespace-pre-wrap">{prefixText}</span>
-						)}
-						{showTokenOverlay ? (
-							<TokenInlineRenderer
-								inline
-								tokens={tokenLogprobs}
-								onSelectAlternative={
-									onTokenReroll
-										? (index, alternative) => onTokenReroll(index, alternative)
-										: undefined
-								}
-								disabled={isPredictDisabled || !onTokenReroll}
-							/>
-						) : (
-							<span className="whitespace-pre-wrap">{generatedTail}</span>
-						)}
+				<div className="flex-1 overflow-y-auto rounded-xl border border-solid border-slate-200 bg-white/70 shadow-sm dark:bg-slate-900/60">
+					<div className="relative min-h-full">
+						{/* Overlay Layer (Relative, dictates height) */}
+						<div
+							className="min-h-[18rem] w-full whitespace-pre-wrap p-3 font-sans text-base leading-8 text-[#374151] dark:text-slate-100"
+							aria-hidden="true"
+						>
+							{prefixText.length > 0 && (
+								<span className="text-[#374151] dark:text-slate-100">
+									{prefixText}
+								</span>
+							)}
+							{tokenLogprobs && tokenLogprobs.length > 0 ? (
+								<TokenInlineRenderer
+									inline
+									tokens={tokenLogprobs}
+									onSelectAlternative={
+										onTokenReroll
+											? (index, alternative) =>
+													onTokenReroll(index, alternative)
+											: undefined
+									}
+									disabled={isPredictDisabled || !onTokenReroll}
+									hoveredIndex={hoveredIndex}
+								/>
+							) : (
+								<span className="text-[#374151] dark:text-slate-100">
+									{generatedTail}
+								</span>
+							)}
+							{/* Add a trailing space to ensure caret at end works visually if needed, though textarea handles it */}
+							<span className="invisible">{"\u200b"}</span>
+						</div>
+
+						{/* Textarea Layer (Absolute, covers overlay) */}
+						<textarea
+							ref={textareaRef}
+							value={value}
+							onChange={(event) => onChange(event.target.value)}
+							onMouseMove={handleMouseMove}
+							onMouseLeave={handleMouseLeave}
+							placeholder="Provide a seed paragraph and let the model continue it…"
+							className="absolute inset-0 h-full w-full resize-none overflow-hidden bg-transparent p-3 font-sans text-base leading-8 text-transparent caret-slate-900 focus:outline-none dark:text-transparent dark:caret-slate-100 border-none outline-none ring-0"
+							spellCheck={false}
+						/>
 					</div>
-				) : (
-					<Textarea
-						size="lg"
-						value={value}
-						onChange={(event) => {
-							onChange(event.target.value);
-						}}
-						placeholder="Provide a seed paragraph and let the model continue it…"
-						classNames={{
-							root: "flex h-full flex-1 flex-col",
-							wrapper: "flex-1 min-h-0",
-							input:
-								"h-full min-h-[18rem] resize-none overflow-y-auto border-none bg-transparent text-lg leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none dark:text-slate-100",
-						}}
-					/>
-				)}
+				</div>
 			</div>
 			<div className="flex justify-end">
 				<Button

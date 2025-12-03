@@ -1,5 +1,5 @@
 import { Popover } from "@mantine/core";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { twJoin } from "tailwind-merge";
 import type { TokenAlternative, TokenLogprob } from "../types";
 
@@ -20,11 +20,35 @@ const TokenInlineRenderer = ({
 	disabled = false,
 	className,
 	inline = false,
-}: TokenInlineRendererProps) => {
-	const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+	hoveredIndex: externalHoveredIndex = null,
+}: TokenInlineRendererProps & { hoveredIndex?: number | null }) => {
+	const [internalHoveredIndex, setInternalHoveredIndex] = useState<
+		number | null
+	>(null);
 	const [isDropdownHover, setIsDropdownHover] = useState(false);
+	const isDropdownHoverRef = useRef(false);
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const Container = inline ? "span" : "div";
+
+	useEffect(() => {
+		isDropdownHoverRef.current = isDropdownHover;
+	}, [isDropdownHover]);
+
+	// Sync external hover to internal state, but respect dropdown interaction
+	const effectiveHoveredIndex = useMemo(() => {
+		if (isDropdownHover) {
+			return internalHoveredIndex;
+		}
+		return externalHoveredIndex ?? internalHoveredIndex;
+	}, [externalHoveredIndex, internalHoveredIndex, isDropdownHover]);
+
+	// Update internal state when external changes (to keep track of last hovered for dropdown)
+	if (
+		externalHoveredIndex !== null &&
+		externalHoveredIndex !== internalHoveredIndex
+	) {
+		setInternalHoveredIndex(externalHoveredIndex);
+	}
 
 	const visibleTokens = useMemo(
 		() => tokens.filter((token) => token.token.length > 0),
@@ -36,11 +60,21 @@ const TokenInlineRenderer = ({
 			clearTimeout(closeTimer.current);
 		}
 		closeTimer.current = setTimeout(() => {
-			if (!isDropdownHover) {
-				setHoveredIndex(null);
+			if (!isDropdownHoverRef.current) {
+				setInternalHoveredIndex(null);
 			}
 		}, 120);
 	};
+
+	useEffect(() => {
+		if (externalHoveredIndex === null) {
+			scheduleClose();
+		} else {
+			if (closeTimer.current) {
+				clearTimeout(closeTimer.current);
+			}
+		}
+	}, [externalHoveredIndex]);
 
 	return (
 		<Container
@@ -60,20 +94,22 @@ const TokenInlineRenderer = ({
 					token.alternatives.length > 0
 						? token.alternatives
 						: [{ token: token.token, probability: probability ?? 0 }];
-				const isActive = hoveredIndex === index;
+				const isActive = effectiveHoveredIndex === index;
 				return (
 					<Popover
 						key={`${token.token}-${index}`}
 						width={280}
 						shadow="md"
-						opened={isActive || (isDropdownHover && hoveredIndex === index)}
+						opened={isActive}
 						withinPortal
 						position="top"
+						offset={0}
 					>
 						<Popover.Target>
 							<span
+								data-token-index={index}
 								className={twJoin(
-									"relative inline-block rounded-sm transition",
+									"relative inline rounded-sm transition",
 									isActive
 										? "border-sky-400 bg-sky-50 shadow-[0_0_0_1px_rgba(56,189,248,0.25)]"
 										: "",
@@ -92,7 +128,7 @@ const TokenInlineRenderer = ({
 									if (closeTimer.current) {
 										clearTimeout(closeTimer.current);
 									}
-									setHoveredIndex(index);
+									setInternalHoveredIndex(index);
 								}}
 								onMouseLeave={scheduleClose}
 							>
@@ -106,7 +142,8 @@ const TokenInlineRenderer = ({
 									clearTimeout(closeTimer.current);
 								}
 								setIsDropdownHover(true);
-								setHoveredIndex(index);
+								// Ensure we keep the current index active
+								setInternalHoveredIndex(index);
 							}}
 							onMouseLeave={() => {
 								setIsDropdownHover(false);
@@ -127,7 +164,7 @@ const TokenInlineRenderer = ({
 												return;
 											}
 											onSelectAlternative?.(index, alt);
-											setHoveredIndex(null);
+											setInternalHoveredIndex(null);
 											setIsDropdownHover(false);
 										}}
 									>
