@@ -1,20 +1,31 @@
 import { builtInAI } from "@built-in-ai/core";
 import {
+	ActionIcon,
+	Badge,
 	Button,
+	Card,
 	Group,
 	Modal,
+	NavLink,
 	PasswordInput,
 	Progress,
 	Select,
+	Stack,
+	Switch,
+	Text,
 	TextInput,
+	Title,
+	UnstyledButton,
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../state/useSettingsStore";
 import type { BuiltInAvailability, ProviderKind } from "../types";
 
 interface SettingsFormValues {
+	name: string;
 	baseURL: string;
 	apiKey: string;
 	providerKind: ProviderKind;
@@ -25,41 +36,87 @@ interface SettingsModalProps {
 	onClose: () => void;
 }
 
+type SettingsTab = "general" | "provider";
+
 const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	const {
-		baseURL,
-		apiKey,
-		providerKind,
+		providers,
+		activeProviderId,
 		builtInAvailability,
 		setBuiltInAvailability,
 		refreshBuiltInAvailability,
-		saveSettings,
+		addProvider,
+		updateProvider,
+		removeProvider,
+		setActiveProvider,
 		syncModels,
+		enableBeforeUnloadWarning,
+		setEnableBeforeUnloadWarning,
 	} = useSettingsStore(
 		useShallow((state) => ({
-			baseURL: state.baseURL,
-			apiKey: state.apiKey,
-			providerKind: state.providerKind,
+			providers: state.providers,
+			activeProviderId: state.activeProviderId,
 			builtInAvailability: state.builtInAvailability,
 			setBuiltInAvailability: state.setBuiltInAvailability,
 			refreshBuiltInAvailability: state.refreshBuiltInAvailability,
-			saveSettings: state.saveSettings,
+			addProvider: state.addProvider,
+			updateProvider: state.updateProvider,
+			removeProvider: state.removeProvider,
+			setActiveProvider: state.setActiveProvider,
 			syncModels: state.syncModels,
+			enableBeforeUnloadWarning: state.enableBeforeUnloadWarning,
+			setEnableBeforeUnloadWarning: state.setEnableBeforeUnloadWarning,
 		})),
 	);
-	const { register, handleSubmit, reset, watch, setValue } =
+
+	const [isAddingProvider, setIsAddingProvider] = useState(false);
+	const [editingProviderId, setEditingProviderId] = useState<string | null>(
+		null,
+	);
+
+	const { register, handleSubmit, reset, watch, setValue, formState } =
 		useForm<SettingsFormValues>({
+			mode: "onBlur",
+			reValidateMode: "onBlur",
 			defaultValues: {
-				baseURL,
-				apiKey,
-				providerKind,
+				name: "",
+				baseURL: "",
+				apiKey: "",
+				providerKind: "openai-compatible",
 			},
 		});
+	const { isDirty, isSubmitting } = formState;
+
+	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 	const selectedProvider = watch("providerKind");
+	const baseURLValue = watch("baseURL");
+	const nameValue = watch("name");
 	const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 	const [downloadError, setDownloadError] = useState<string | null>(null);
 	const [isDownloading, setIsDownloading] = useState(false);
+	const [syncingProviderId, setSyncingProviderId] = useState<string | null>(
+		null,
+	);
+	const [isSavingProvider, setIsSavingProvider] = useState(false);
+	const [showNameField, setShowNameField] = useState(false);
+	const [isNameManuallySet, setIsNameManuallySet] = useState(false);
+	const isSavingProviderRef = useRef(false);
 	const downloadModelRef = useRef<ReturnType<typeof builtInAI> | null>(null);
+
+	const handleSelectProvider = useCallback(
+		(providerId: string) => {
+			void setActiveProvider(providerId);
+		},
+		[setActiveProvider],
+	);
+
+	const computeFallbackName = useCallback(
+		(kind: ProviderKind, baseURL: string) =>
+			kind === "openai-compatible"
+				? baseURL.trim() || "OpenAI-Compatible"
+				: "Built-in AI",
+		[],
+	);
 
 	const handleCheckBuiltInAvailability = useCallback(async () => {
 		if (isDownloading) {
@@ -156,8 +213,14 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			setIsDownloading(false);
 			setDownloadProgress(null);
 			setDownloadError(null);
+			setActiveTab("general");
+			setIsAddingProvider(false);
+			setEditingProviderId(null);
+			setShowNameField(false);
+			setIsNameManuallySet(false);
+			reset(undefined, { keepDirty: false, keepTouched: false });
 		}
-	}, [open]);
+	}, [open, reset]);
 
 	useEffect(() => {
 		if (
@@ -174,11 +237,45 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		selectedProvider,
 	]);
 
+	// Keep name in sync with provider kind/base unless user explicitly edits it
 	useEffect(() => {
-		if (open) {
-			reset({ baseURL, apiKey, providerKind });
+		if (selectedProvider !== "openai-compatible" || isNameManuallySet) {
+			return;
 		}
-	}, [apiKey, baseURL, open, providerKind, reset]);
+		const fallbackName = computeFallbackName("openai-compatible", baseURLValue);
+		if (nameValue !== fallbackName) {
+			setValue("name", fallbackName, {
+				shouldDirty: true,
+				shouldTouch: true,
+			});
+		}
+	}, [
+		baseURLValue,
+		computeFallbackName,
+		isNameManuallySet,
+		nameValue,
+		selectedProvider,
+		setValue,
+	]);
+
+	useEffect(() => {
+		if (selectedProvider !== "built-in" || isNameManuallySet) {
+			return;
+		}
+		const fallbackName = computeFallbackName("built-in", "");
+		if (nameValue !== fallbackName) {
+			setValue("name", fallbackName, {
+				shouldDirty: true,
+				shouldTouch: true,
+			});
+		}
+	}, [
+		computeFallbackName,
+		isNameManuallySet,
+		nameValue,
+		selectedProvider,
+		setValue,
+	]);
 
 	useEffect(() => {
 		if (builtInAvailability === "available") {
@@ -186,28 +283,148 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		}
 	}, [builtInAvailability]);
 
-	return (
-		<Modal opened={open} onClose={onClose} title="Settings">
-			<form
-				onSubmit={handleSubmit(async (values) => {
-					await saveSettings(values);
-					onClose();
-				})}
-			>
+	const handleSaveProvider = useCallback(
+		async (values: SettingsFormValues) => {
+			if (isSavingProviderRef.current) {
+				return;
+			}
+			isSavingProviderRef.current = true;
+			setIsSavingProvider(true);
+			try {
+				const trimmedName = values.name.trim();
+				const fallbackName =
+					trimmedName ||
+					(values.providerKind === "openai-compatible"
+						? values.baseURL.trim() || "OpenAI-Compatible"
+						: "Built-in AI");
+				const config =
+					values.providerKind === "openai-compatible"
+						? { baseURL: values.baseURL, apiKey: values.apiKey }
+						: {};
+
+				if (editingProviderId) {
+					await updateProvider(editingProviderId, {
+						name: fallbackName,
+						kind: values.providerKind,
+						config,
+					});
+				} else {
+					await addProvider({
+						name: fallbackName,
+						kind: values.providerKind,
+						config,
+					});
+				}
+				setIsAddingProvider(false);
+				setEditingProviderId(null);
+				setIsNameManuallySet(false);
+				setShowNameField(false);
+				reset();
+				toast.success("Settings saved", { id: "settings-save" });
+			} finally {
+				isSavingProviderRef.current = false;
+				setIsSavingProvider(false);
+			}
+		},
+		[addProvider, editingProviderId, reset, updateProvider],
+	);
+
+	const handleAutoSubmit = useCallback(() => {
+		if (!isDirty || isSubmitting) {
+			return;
+		}
+		void handleSubmit(handleSaveProvider)();
+	}, [handleSaveProvider, handleSubmit, isDirty, isSubmitting]);
+
+	const startEditing = (providerId: string) => {
+		const provider = providers.find((p) => p.id === providerId);
+		if (provider) {
+			const fallbackName = computeFallbackName(
+				provider.kind,
+				provider.config.baseURL || "",
+			);
+			const hasCustomName = provider.name.trim() !== fallbackName;
+			reset(
+				{
+					name: provider.name,
+					providerKind: provider.kind,
+					baseURL: provider.config.baseURL || "",
+					apiKey: provider.config.apiKey || "",
+				},
+				{ keepDirty: false, keepTouched: false },
+			);
+			setIsNameManuallySet(hasCustomName);
+			setShowNameField(hasCustomName);
+			setEditingProviderId(providerId);
+			setIsAddingProvider(true);
+		}
+	};
+
+	const renderGeneralTab = () => (
+		<Stack gap="md">
+			<Title order={4}>General Settings</Title>
+			<Card withBorder padding="md" radius="md">
+				<Group justify="space-between" align="flex-start">
+					<div>
+						<Text size="sm" fw={500}>
+							Warn before leaving
+						</Text>
+						<Text size="sm" c="dimmed">
+							Show a confirmation dialog if you try to close or refresh while
+							there are unsent messages or active generations.
+						</Text>
+					</div>
+					<Switch
+						checked={enableBeforeUnloadWarning}
+						onChange={(event) => {
+							void setEnableBeforeUnloadWarning(event.currentTarget.checked);
+						}}
+						size="md"
+						aria-label="Toggle beforeunload warning"
+					/>
+				</Group>
+			</Card>
+		</Stack>
+	);
+
+	const renderProviderForm = () => {
+		const hasBuiltIn = providers.some((p) => p.kind === "built-in");
+		const isEditingBuiltIn =
+			editingProviderId &&
+			providers.find((p) => p.id === editingProviderId)?.kind === "built-in";
+
+		return (
+			<Stack gap="md">
 				<Select
-					label="Provider"
+					label="Provider Type"
 					data={[
 						{ label: "OpenAI-Compatible", value: "openai-compatible" },
-						{ label: "Built-in AI (Chrome/Edge)", value: "built-in" },
+						{
+							label: "Built-in AI (Chrome/Edge)",
+							value: "built-in",
+							disabled: hasBuiltIn && !isEditingBuiltIn,
+						},
 					]}
 					value={selectedProvider}
 					onChange={(value) => {
 						if (value) {
-							setValue("providerKind", value as ProviderKind);
+							if (value === "built-in") {
+								setIsNameManuallySet(false);
+								setShowNameField(false);
+								setValue("name", computeFallbackName("built-in", ""), {
+									shouldDirty: true,
+									shouldTouch: true,
+								});
+							}
+							setValue("providerKind", value as ProviderKind, {
+								shouldDirty: true,
+								shouldTouch: true,
+								shouldValidate: true,
+							});
 						}
 					}}
+					onBlur={handleAutoSubmit}
 					withAsterisk
-					mb="md"
 				/>
 				{selectedProvider === "openai-compatible" ? (
 					<>
@@ -217,33 +434,21 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							type="url"
 							{...register("baseURL", {
 								required: selectedProvider === "openai-compatible",
+								onBlur: handleAutoSubmit,
 							})}
 						/>
 						<PasswordInput
-							mt="md"
-							label="API Key"
+							label="API Key (optional)"
 							placeholder="sk-..."
-							withAsterisk
 							{...register("apiKey", {
-								required: selectedProvider === "openai-compatible",
+								required: false,
+								onBlur: handleAutoSubmit,
 							})}
 						/>
 					</>
 				) : null}
-				{selectedProvider === "openai-compatible" && (
-					<div className="flex items-center justify-between mt-4">
-						<p>Models</p>
-						<Button
-							onClick={() => {
-								void syncModels();
-							}}
-						>
-							Sync from API
-						</Button>
-					</div>
-				)}
 				{selectedProvider === "built-in" && (
-					<div className="mt-4 space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
+					<div className="mt-2 space-y-2 rounded border border-solid border-slate-200 bg-slate-50 p-3">
 						<p className="text-sm text-slate-600">
 							Model status:{" "}
 							<span className="font-semibold">{builtInStatusLabel}</span>
@@ -277,10 +482,249 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						) : null}
 					</div>
 				)}
+				<UnstyledButton
+					className="flex items-center gap-2 text-xs font-medium text-slate-600"
+					onClick={() => setShowNameField((prev) => !prev)}
+					aria-expanded={showNameField}
+					aria-controls="provider-name-field"
+					type="button"
+				>
+					<span
+						className={
+							showNameField
+								? `i-lucide-chevron-down w-4 h-4`
+								: `i-lucide-chevron-right w-4 h-4`
+						}
+						aria-hidden="true"
+					/>
+					<span>Advanced Configurations</span>
+				</UnstyledButton>
+				{showNameField ? (
+					<TextInput
+						id="provider-name-field"
+						label="Name"
+						placeholder="My Provider"
+						{...register("name", {
+							required: false,
+							onBlur: handleAutoSubmit,
+							onChange: () => setIsNameManuallySet(true),
+						})}
+					/>
+				) : null}
 				<Group justify="flex-end" mt="md">
-					<Button type="submit">Save</Button>
+					<Button
+						variant="subtle"
+						onClick={() => {
+							setIsAddingProvider(false);
+							setEditingProviderId(null);
+							reset();
+						}}
+						disabled={isSavingProvider}
+					>
+						Cancel
+					</Button>
+					<Button
+						onClick={handleSubmit(handleSaveProvider)}
+						loading={isSavingProvider}
+						disabled={isSavingProvider}
+					>
+						{editingProviderId ? "Update" : "Add"}
+					</Button>
 				</Group>
-			</form>
+			</Stack>
+		);
+	};
+
+	const renderProviderList = () => (
+		<Stack gap="md">
+			<Group justify="space-between">
+				<Title order={4}>AI Providers</Title>
+				<Button
+					size="xs"
+					onClick={() => {
+						reset({
+							name: "",
+							baseURL: "",
+							apiKey: "",
+							providerKind: "openai-compatible",
+						});
+						setIsNameManuallySet(false);
+						setShowNameField(false);
+						setIsAddingProvider(true);
+					}}
+				>
+					Add Provider
+				</Button>
+			</Group>
+			{providers.length === 0 ? (
+				<Text c="dimmed" size="sm" ta="center" py="xl">
+					No providers added yet.
+				</Text>
+			) : (
+				<Stack gap="sm">
+					{providers.map((provider) => (
+						<Card
+							key={provider.id}
+							withBorder
+							padding="sm"
+							radius="md"
+							className={
+								activeProviderId === provider.id
+									? "border-blue-500 bg-blue-50/50 cursor-pointer"
+									: "cursor-pointer"
+							}
+							onClick={() => handleSelectProvider(provider.id)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter" || event.key === " ") {
+									event.preventDefault();
+									handleSelectProvider(provider.id);
+								}
+							}}
+							role="button"
+							tabIndex={0}
+						>
+							<Group justify="space-between" align="center">
+								<Group gap="sm">
+									<ActionIcon
+										variant={
+											activeProviderId === provider.id ? "filled" : "default"
+										}
+										color={activeProviderId === provider.id ? "blue" : "gray"}
+										radius="xl"
+										size="sm"
+										onClick={(event) => {
+											event.stopPropagation();
+											void setActiveProvider(provider.id);
+										}}
+										aria-label={
+											activeProviderId === provider.id
+												? "Active provider"
+												: "Set as active"
+										}
+									>
+										<span className="i-lucide-check w-3 h-3" />
+									</ActionIcon>
+									<div>
+										<Group gap="xs" className="max-w-[14rem] truncate">
+											<Text size="sm" fw={500} lineClamp={1}>
+												{provider.name}
+											</Text>
+										</Group>
+										<Text size="xs" c="dimmed">
+											{provider.kind === "openai-compatible"
+												? "OpenAI Compatible"
+												: "Built-in AI"}
+										</Text>
+									</div>
+								</Group>
+								<Group gap="xs">
+									{activeProviderId === provider.id &&
+										provider.kind === "openai-compatible" && (
+											<ActionIcon
+												variant="light"
+												color="blue"
+												size="sm"
+												disabled={Boolean(syncingProviderId)}
+												onClick={async (event) => {
+													event.stopPropagation();
+													if (syncingProviderId) {
+														return;
+													}
+													setSyncingProviderId(provider.id);
+													try {
+														await syncModels();
+													} finally {
+														setSyncingProviderId(null);
+													}
+												}}
+												title="Sync Models"
+											>
+												<span
+													className={`i-lucide-refresh-cw w-3 h-3 ${syncingProviderId === provider.id ? "animate-spin" : ""}`}
+												/>
+											</ActionIcon>
+										)}
+									<ActionIcon
+										variant="subtle"
+										color="gray"
+										size="sm"
+										onClick={(event) => {
+											event.stopPropagation();
+											startEditing(provider.id);
+										}}
+									>
+										<span className="i-lucide-pencil w-3 h-3" />
+									</ActionIcon>
+									<ActionIcon
+										variant="subtle"
+										color="red"
+										size="sm"
+										onClick={async (event) => {
+											event.stopPropagation();
+											const confirmMessage = `Remove provider "${provider.name}"${
+												activeProviderId === provider.id
+													? "? This may switch the active provider."
+													: "?"
+											}`;
+											if (!window.confirm(confirmMessage)) {
+												return;
+											}
+											await removeProvider(provider.id);
+										}}
+									>
+										<span className="i-lucide-trash w-3 h-3" />
+									</ActionIcon>
+								</Group>
+							</Group>
+						</Card>
+					))}
+				</Stack>
+			)}
+		</Stack>
+	);
+
+	return (
+		<Modal
+			opened={open}
+			onClose={onClose}
+			title="Settings"
+			size="lg"
+			styles={{
+				body: { height: "500px", display: "flex", padding: 0 },
+			}}
+		>
+			<div className="flex flex-1 h-full w-full">
+				{/* Sidebar */}
+				<div className="w-48 border-r border-solid border-gray-200 bg-gray-50 p-2 flex flex-col gap-1">
+					<NavLink
+						label="General"
+						leftSection={
+							<span className="i-lucide-sliders-horizontal w-4 h-4" />
+						}
+						active={activeTab === "general"}
+						onClick={() => setActiveTab("general")}
+						variant="light"
+						className="rounded-md"
+					/>
+					<NavLink
+						label="Provider"
+						leftSection={<span className="i-lucide-cloud w-4 h-4" />}
+						active={activeTab === "provider"}
+						onClick={() => setActiveTab("provider")}
+						variant="light"
+						className="rounded-md"
+					/>
+				</div>
+
+				{/* Content */}
+				<div className="flex-1 flex flex-col">
+					<div className="flex-1 p-4 overflow-y-auto">
+						{activeTab === "general" && renderGeneralTab()}
+						{activeTab === "provider" &&
+							(isAddingProvider ? renderProviderForm() : renderProviderList())}
+					</div>
+				</div>
+			</div>
 		</Modal>
 	);
 };

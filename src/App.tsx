@@ -18,29 +18,26 @@ import { useEnsureSystemMessage } from "./hooks/useEnsureSystemMessage";
 import { useProviderReadiness } from "./hooks/useProviderReadiness";
 import { useTextCompletion } from "./hooks/useTextCompletion";
 import { useSettingsStore } from "./state/useSettingsStore";
-import type { AppView } from "./types";
+import type { AppView, ModelInfo } from "./types";
 
 const defaultSystemPrompt = "You are a helpful assistant.";
+const emptyModels: ModelInfo[] = [];
 
 const App = () => {
 	const {
-		baseURL,
-		apiKey,
-		models,
-		activeModel,
+		providers,
+		activeProviderId,
 		setActiveModel,
-		providerKind,
+		enableBeforeUnloadWarning,
 		builtInAvailability,
 		hydrate,
 		refreshBuiltInAvailability,
 	} = useSettingsStore(
 		useShallow((state) => ({
-			baseURL: state.baseURL,
-			apiKey: state.apiKey,
-			models: state.models,
-			activeModel: state.activeModel,
+			providers: state.providers,
+			activeProviderId: state.activeProviderId,
 			setActiveModel: state.setActiveModel,
-			providerKind: state.providerKind,
+			enableBeforeUnloadWarning: state.enableBeforeUnloadWarning,
 			builtInAvailability: state.builtInAvailability,
 			hydrate: state.hydrate,
 			refreshBuiltInAvailability: state.refreshBuiltInAvailability,
@@ -48,13 +45,23 @@ const App = () => {
 	);
 	const [view, setView] = useState<AppView>("chat");
 
+	const activeProvider = useMemo(
+		() => providers.find((p) => p.id === activeProviderId),
+		[providers, activeProviderId],
+	);
+
+	const models = activeProvider?.models ?? emptyModels;
+	const activeModel = activeProvider?.activeModelId ?? null;
+
+	const providerKind = activeProvider?.kind ?? "openai-compatible";
+
 	const openAIProvider = useMemo(
 		() =>
 			buildOpenAICompatibleProvider({
-				baseURL,
-				apiKey,
+				baseURL: activeProvider?.config.baseURL ?? "",
+				apiKey: activeProvider?.config.apiKey ?? "",
 			}),
-		[apiKey, baseURL],
+		[activeProvider],
 	);
 
 	const getBuiltInChatModel = useCallback(() => builtInAI(), []);
@@ -155,7 +162,7 @@ const App = () => {
 		typeof editingMessageId !== "undefined" ||
 		chatMessages.length > 1;
 
-	useBeforeUnloadGuard(hasSessionState);
+	useBeforeUnloadGuard(enableBeforeUnloadWarning && hasSessionState);
 
 	const handleClearConversation = useCallback(() => {
 		clearConversation();
