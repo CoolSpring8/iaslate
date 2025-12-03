@@ -91,6 +91,9 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 	const [downloadError, setDownloadError] = useState<string | null>(null);
 	const [isDownloading, setIsDownloading] = useState(false);
+	const [syncingProviderId, setSyncingProviderId] = useState<string | null>(
+		null,
+	);
 	const downloadModelRef = useRef<ReturnType<typeof builtInAI> | null>(null);
 
 	const handleCheckBuiltInAvailability = useCallback(async () => {
@@ -355,7 +358,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 					</>
 				) : null}
 				{selectedProvider === "built-in" && (
-					<div className="mt-2 space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
+					<div className="mt-2 space-y-2 rounded border border-solid border-slate-200 bg-slate-50 p-3">
 						<p className="text-sm text-slate-600">
 							Model status:{" "}
 							<span className="font-semibold">{builtInStatusLabel}</span>
@@ -486,10 +489,23 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 												variant="light"
 												color="blue"
 												size="sm"
-												onClick={() => syncModels()}
+												disabled={Boolean(syncingProviderId)}
+												onClick={async () => {
+													if (syncingProviderId) {
+														return;
+													}
+													setSyncingProviderId(provider.id);
+													try {
+														await syncModels();
+													} finally {
+														setSyncingProviderId(null);
+													}
+												}}
 												title="Sync Models"
 											>
-												<span className="i-lucide-refresh-cw w-3 h-3" />
+												<span
+													className={`i-lucide-refresh-cw w-3 h-3 ${syncingProviderId === provider.id ? "animate-spin" : ""}`}
+												/>
 											</ActionIcon>
 										)}
 									<ActionIcon
@@ -504,7 +520,17 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 										variant="subtle"
 										color="red"
 										size="sm"
-										onClick={() => removeProvider(provider.id)}
+										onClick={async () => {
+											const confirmMessage = `Remove provider "${provider.name}"${
+												activeProviderId === provider.id
+													? "? This may switch the active provider."
+													: "?"
+											}`;
+											if (!window.confirm(confirmMessage)) {
+												return;
+											}
+											await removeProvider(provider.id);
+										}}
 									>
 										<span className="i-lucide-trash w-3 h-3" />
 									</ActionIcon>
@@ -529,7 +555,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		>
 			<div className="flex flex-1 h-full w-full">
 				{/* Sidebar */}
-				<div className="w-48 border-r border-gray-200 bg-gray-50 p-2 flex flex-col gap-1">
+				<div className="w-48 border-r border-solid border-gray-200 bg-gray-50 p-2 flex flex-col gap-1">
 					<NavLink
 						label="General"
 						leftSection={
