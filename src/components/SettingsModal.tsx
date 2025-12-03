@@ -228,6 +228,12 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 
 	const handleSaveProvider = useCallback(
 		async (values: SettingsFormValues) => {
+			const trimmedName = values.name.trim();
+			const fallbackName =
+				trimmedName ||
+				(values.providerKind === "openai-compatible"
+					? values.baseURL.trim() || "OpenAI-Compatible"
+					: "Built-in AI");
 			const config =
 				values.providerKind === "openai-compatible"
 					? { baseURL: values.baseURL, apiKey: values.apiKey }
@@ -235,13 +241,13 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 
 			if (editingProviderId) {
 				await updateProvider(editingProviderId, {
-					name: values.name,
+					name: fallbackName,
 					kind: values.providerKind,
 					config,
 				});
 			} else {
 				await addProvider({
-					name: values.name,
+					name: fallbackName,
 					kind: values.providerKind,
 					config,
 				});
@@ -314,10 +320,9 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		return (
 			<Stack gap="md">
 				<TextInput
-					label="Name"
+					label="Name (optional)"
 					placeholder="My Provider"
-					withAsterisk
-					{...register("name", { required: true, onBlur: handleAutoSubmit })}
+					{...register("name", { required: false, onBlur: handleAutoSubmit })}
 				/>
 				<Select
 					label="Provider Type"
@@ -354,11 +359,10 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							})}
 						/>
 						<PasswordInput
-							label="API Key"
+							label="API Key (optional)"
 							placeholder="sk-..."
-							withAsterisk
 							{...register("apiKey", {
-								required: selectedProvider === "openai-compatible",
+								required: false,
 								onBlur: handleAutoSubmit,
 							})}
 						/>
@@ -486,13 +490,10 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 										<span className="i-lucide-check w-3 h-3" />
 									</ActionIcon>
 									<div>
-										<Group gap="xs">
-											<Text size="sm" fw={500}>
-												{provider.name}
-											</Text>
-											{activeProviderId === provider.id && (
-												<Badge size="xs">Active</Badge>
-											)}
+									<Group gap="xs" className="max-w-[14rem] truncate">
+										<Text size="sm" fw={500} lineClamp={1}>
+											{provider.name}
+										</Text>
 										</Group>
 										<Text size="xs" c="dimmed">
 											{provider.kind === "openai-compatible"
