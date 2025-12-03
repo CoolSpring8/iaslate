@@ -23,7 +23,10 @@ export const useTextCompletion = ({
 
 	const runGeneration = useCallback(
 		async (seedText: string, updateSeed = true) => {
-			if (isGenerating) {
+			const hasActiveGeneration =
+				abortControllerRef.current &&
+				abortControllerRef.current.signal.aborted === false;
+			if (hasActiveGeneration) {
 				return;
 			}
 			const readiness = ensureCompletionReady();
@@ -62,13 +65,13 @@ export const useTextCompletion = ({
 				console.error(error);
 				toast.error("Failed to generate completion");
 			} finally {
-				setIsGenerating(false);
 				if (abortControllerRef.current === abortController) {
+					setIsGenerating(false);
 					abortControllerRef.current = null;
 				}
 			}
 		},
-		[ensureCompletionReady, isGenerating, setTextContent, setTokenLogprobs],
+		[ensureCompletionReady, setTextContent, setTokenLogprobs],
 	);
 
 	const predict = useCallback(async () => {
