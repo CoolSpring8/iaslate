@@ -17,6 +17,7 @@ import {
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../state/useSettingsStore";
 import type { BuiltInAvailability, ProviderKind } from "../types";
@@ -67,8 +68,10 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		null,
 	);
 
-	const { register, handleSubmit, reset, watch, setValue } =
+	const { register, handleSubmit, reset, watch, setValue, formState } =
 		useForm<SettingsFormValues>({
+			mode: "onBlur",
+			reValidateMode: "onBlur",
 			defaultValues: {
 				name: "",
 				baseURL: "",
@@ -76,6 +79,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				providerKind: "openai-compatible",
 			},
 		});
+	const { isDirty, isSubmitting } = formState;
 
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 	const selectedProvider = watch("providerKind");
@@ -182,8 +186,9 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			setActiveTab("general");
 			setIsAddingProvider(false);
 			setEditingProviderId(null);
+			reset(undefined, { keepDirty: false, keepTouched: false });
 		}
-	}, [open]);
+	}, [open, reset]);
 
 	useEffect(() => {
 		if (
@@ -206,37 +211,53 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		}
 	}, [builtInAvailability]);
 
-	const handleSaveProvider = async (values: SettingsFormValues) => {
-		const config =
-			values.providerKind === "openai-compatible"
-				? { baseURL: values.baseURL, apiKey: values.apiKey }
-				: {};
+	const handleSaveProvider = useCallback(
+		async (values: SettingsFormValues) => {
+			const config =
+				values.providerKind === "openai-compatible"
+					? { baseURL: values.baseURL, apiKey: values.apiKey }
+					: {};
 
-		if (editingProviderId) {
-			await updateProvider(editingProviderId, {
-				name: values.name,
-				kind: values.providerKind,
-				config,
-			});
-		} else {
-			await addProvider({
-				name: values.name,
-				kind: values.providerKind,
-				config,
-			});
+			if (editingProviderId) {
+				await updateProvider(editingProviderId, {
+					name: values.name,
+					kind: values.providerKind,
+					config,
+				});
+			} else {
+				await addProvider({
+					name: values.name,
+					kind: values.providerKind,
+					config,
+				});
+			}
+			setIsAddingProvider(false);
+			setEditingProviderId(null);
+			reset();
+			toast.success("Settings saved", { id: "settings-save" });
+		},
+		[addProvider, editingProviderId, reset, updateProvider],
+	);
+
+	const handleAutoSubmit = useCallback(() => {
+		if (!isDirty || isSubmitting) {
+			return;
 		}
-		setIsAddingProvider(false);
-		setEditingProviderId(null);
-		reset();
-	};
+		void handleSubmit(handleSaveProvider)();
+	}, [handleSaveProvider, handleSubmit, isDirty, isSubmitting]);
 
 	const startEditing = (providerId: string) => {
 		const provider = providers.find((p) => p.id === providerId);
 		if (provider) {
-			setValue("name", provider.name);
-			setValue("providerKind", provider.kind);
-			setValue("baseURL", provider.config.baseURL || "");
-			setValue("apiKey", provider.config.apiKey || "");
+			reset(
+				{
+					name: provider.name,
+					providerKind: provider.kind,
+					baseURL: provider.config.baseURL || "",
+					apiKey: provider.config.apiKey || "",
+				},
+				{ keepDirty: false, keepTouched: false },
+			);
 			setEditingProviderId(providerId);
 			setIsAddingProvider(true);
 		}
@@ -263,7 +284,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 					label="Name"
 					placeholder="My Provider"
 					withAsterisk
-					{...register("name", { required: true })}
+					{...register("name", { required: true, onBlur: handleAutoSubmit })}
 				/>
 				<Select
 					label="Provider Type"
@@ -278,9 +299,14 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 					value={selectedProvider}
 					onChange={(value) => {
 						if (value) {
-							setValue("providerKind", value as ProviderKind);
+							setValue("providerKind", value as ProviderKind, {
+								shouldDirty: true,
+								shouldTouch: true,
+								shouldValidate: true,
+							});
 						}
 					}}
+					onBlur={handleAutoSubmit}
 					withAsterisk
 				/>
 				{selectedProvider === "openai-compatible" ? (
@@ -291,6 +317,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							type="url"
 							{...register("baseURL", {
 								required: selectedProvider === "openai-compatible",
+								onBlur: handleAutoSubmit,
 							})}
 						/>
 						<PasswordInput
@@ -299,6 +326,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							withAsterisk
 							{...register("apiKey", {
 								required: selectedProvider === "openai-compatible",
+								onBlur: handleAutoSubmit,
 							})}
 						/>
 					</>
@@ -506,11 +534,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						{activeTab === "provider" &&
 							(isAddingProvider ? renderProviderForm() : renderProviderList())}
 					</div>
-					{!isAddingProvider && (
-						<div className="p-4 border-t border-gray-200 bg-white flex justify-end">
-							<Button onClick={onClose}>Close</Button>
-						</div>
-					)}
 				</div>
 			</div>
 		</Modal>
