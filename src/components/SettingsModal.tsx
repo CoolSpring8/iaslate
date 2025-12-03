@@ -96,6 +96,13 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	);
 	const downloadModelRef = useRef<ReturnType<typeof builtInAI> | null>(null);
 
+	const handleSelectProvider = useCallback(
+		(providerId: string) => {
+			void setActiveProvider(providerId);
+		},
+		[setActiveProvider],
+	);
+
 	const handleCheckBuiltInAvailability = useCallback(async () => {
 		if (isDownloading) {
 			return;
@@ -437,30 +444,42 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			) : (
 				<Stack gap="sm">
 					{providers.map((provider) => (
-						<Card
-							key={provider.id}
-							withBorder
-							padding="sm"
-							radius="md"
-							className={
-								activeProviderId === provider.id
-									? "border-blue-500 bg-blue-50/50"
-									: ""
-							}
-						>
-							<Group justify="space-between" align="center">
-								<Group gap="sm">
-									<ActionIcon
-										variant={
-											activeProviderId === provider.id ? "filled" : "default"
-										}
-										color={activeProviderId === provider.id ? "blue" : "gray"}
-										radius="xl"
-										size="sm"
-										onClick={() => setActiveProvider(provider.id)}
-										aria-label={
-											activeProviderId === provider.id
-												? "Active provider"
+							<Card
+								key={provider.id}
+								withBorder
+								padding="sm"
+								radius="md"
+								className={
+									activeProviderId === provider.id
+										? "border-blue-500 bg-blue-50/50 cursor-pointer"
+										: "cursor-pointer"
+								}
+								onClick={() => handleSelectProvider(provider.id)}
+								onKeyDown={(event) => {
+									if (event.key === "Enter" || event.key === " ") {
+										event.preventDefault();
+										handleSelectProvider(provider.id);
+									}
+								}}
+								role="button"
+								tabIndex={0}
+							>
+								<Group justify="space-between" align="center">
+									<Group gap="sm">
+										<ActionIcon
+											variant={
+												activeProviderId === provider.id ? "filled" : "default"
+											}
+											color={activeProviderId === provider.id ? "blue" : "gray"}
+											radius="xl"
+											size="sm"
+											onClick={(event) => {
+												event.stopPropagation();
+												void setActiveProvider(provider.id);
+											}}
+											aria-label={
+												activeProviderId === provider.id
+													? "Active provider"
 												: "Set as active"
 										}
 									>
@@ -490,10 +509,11 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 												color="blue"
 												size="sm"
 												disabled={Boolean(syncingProviderId)}
-												onClick={async () => {
-													if (syncingProviderId) {
-														return;
-													}
+												onClick={async (event) => {
+													event.stopPropagation();
+												if (syncingProviderId) {
+													return;
+												}
 													setSyncingProviderId(provider.id);
 													try {
 														await syncModels();
@@ -512,7 +532,10 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 										variant="subtle"
 										color="gray"
 										size="sm"
-										onClick={() => startEditing(provider.id)}
+										onClick={(event) => {
+											event.stopPropagation();
+											startEditing(provider.id);
+										}}
 									>
 										<span className="i-lucide-pencil w-3 h-3" />
 									</ActionIcon>
@@ -520,7 +543,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 										variant="subtle"
 										color="red"
 										size="sm"
-										onClick={async () => {
+										onClick={async (event) => {
+											event.stopPropagation();
 											const confirmMessage = `Remove provider "${provider.name}"${
 												activeProviderId === provider.id
 													? "? This may switch the active provider."
