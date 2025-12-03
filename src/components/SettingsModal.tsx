@@ -15,6 +15,7 @@ import {
 	Text,
 	TextInput,
 	Title,
+	UnstyledButton,
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -88,12 +89,18 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 	const selectedProvider = watch("providerKind");
+	const baseURLValue = watch("baseURL");
+	const nameValue = watch("name");
 	const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 	const [downloadError, setDownloadError] = useState<string | null>(null);
 	const [isDownloading, setIsDownloading] = useState(false);
 	const [syncingProviderId, setSyncingProviderId] = useState<string | null>(
 		null,
 	);
+	const [isSavingProvider, setIsSavingProvider] = useState(false);
+	const [showNameField, setShowNameField] = useState(false);
+	const [isNameManuallySet, setIsNameManuallySet] = useState(false);
+	const isSavingProviderRef = useRef(false);
 	const downloadModelRef = useRef<ReturnType<typeof builtInAI> | null>(null);
 
 	const handleSelectProvider = useCallback(
@@ -101,6 +108,14 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			void setActiveProvider(providerId);
 		},
 		[setActiveProvider],
+	);
+
+	const computeFallbackName = useCallback(
+		(kind: ProviderKind, baseURL: string) =>
+			kind === "openai-compatible"
+				? baseURL.trim() || "OpenAI-Compatible"
+				: "Built-in AI",
+		[],
 	);
 
 	const handleCheckBuiltInAvailability = useCallback(async () => {
@@ -201,6 +216,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			setActiveTab("general");
 			setIsAddingProvider(false);
 			setEditingProviderId(null);
+			setShowNameField(false);
+			setIsNameManuallySet(false);
 			reset(undefined, { keepDirty: false, keepTouched: false });
 		}
 	}, [open, reset]);
@@ -220,6 +237,46 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		selectedProvider,
 	]);
 
+	// Keep name in sync with provider kind/base unless user explicitly edits it
+	useEffect(() => {
+		if (selectedProvider !== "openai-compatible" || isNameManuallySet) {
+			return;
+		}
+		const fallbackName = computeFallbackName("openai-compatible", baseURLValue);
+		if (nameValue !== fallbackName) {
+			setValue("name", fallbackName, {
+				shouldDirty: true,
+				shouldTouch: true,
+			});
+		}
+	}, [
+		baseURLValue,
+		computeFallbackName,
+		isNameManuallySet,
+		nameValue,
+		selectedProvider,
+		setValue,
+	]);
+
+	useEffect(() => {
+		if (selectedProvider !== "built-in" || isNameManuallySet) {
+			return;
+		}
+		const fallbackName = computeFallbackName("built-in", "");
+		if (nameValue !== fallbackName) {
+			setValue("name", fallbackName, {
+				shouldDirty: true,
+				shouldTouch: true,
+			});
+		}
+	}, [
+		computeFallbackName,
+		isNameManuallySet,
+		nameValue,
+		selectedProvider,
+		setValue,
+	]);
+
 	useEffect(() => {
 		if (builtInAvailability === "available") {
 			setDownloadError(null);
@@ -228,34 +285,46 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 
 	const handleSaveProvider = useCallback(
 		async (values: SettingsFormValues) => {
-			const trimmedName = values.name.trim();
-			const fallbackName =
-				trimmedName ||
-				(values.providerKind === "openai-compatible"
-					? values.baseURL.trim() || "OpenAI-Compatible"
-					: "Built-in AI");
-			const config =
-				values.providerKind === "openai-compatible"
-					? { baseURL: values.baseURL, apiKey: values.apiKey }
-					: {};
-
-			if (editingProviderId) {
-				await updateProvider(editingProviderId, {
-					name: fallbackName,
-					kind: values.providerKind,
-					config,
-				});
-			} else {
-				await addProvider({
-					name: fallbackName,
-					kind: values.providerKind,
-					config,
-				});
+			if (isSavingProviderRef.current) {
+				return;
 			}
-			setIsAddingProvider(false);
-			setEditingProviderId(null);
-			reset();
-			toast.success("Settings saved", { id: "settings-save" });
+			isSavingProviderRef.current = true;
+			setIsSavingProvider(true);
+			try {
+				const trimmedName = values.name.trim();
+				const fallbackName =
+					trimmedName ||
+					(values.providerKind === "openai-compatible"
+						? values.baseURL.trim() || "OpenAI-Compatible"
+						: "Built-in AI");
+				const config =
+					values.providerKind === "openai-compatible"
+						? { baseURL: values.baseURL, apiKey: values.apiKey }
+						: {};
+
+				if (editingProviderId) {
+					await updateProvider(editingProviderId, {
+						name: fallbackName,
+						kind: values.providerKind,
+						config,
+					});
+				} else {
+					await addProvider({
+						name: fallbackName,
+						kind: values.providerKind,
+						config,
+					});
+				}
+				setIsAddingProvider(false);
+				setEditingProviderId(null);
+				setIsNameManuallySet(false);
+				setShowNameField(false);
+				reset();
+				toast.success("Settings saved", { id: "settings-save" });
+			} finally {
+				isSavingProviderRef.current = false;
+				setIsSavingProvider(false);
+			}
 		},
 		[addProvider, editingProviderId, reset, updateProvider],
 	);
@@ -270,6 +339,11 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	const startEditing = (providerId: string) => {
 		const provider = providers.find((p) => p.id === providerId);
 		if (provider) {
+			const fallbackName = computeFallbackName(
+				provider.kind,
+				provider.config.baseURL || "",
+			);
+			const hasCustomName = provider.name.trim() !== fallbackName;
 			reset(
 				{
 					name: provider.name,
@@ -279,6 +353,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				},
 				{ keepDirty: false, keepTouched: false },
 			);
+			setIsNameManuallySet(hasCustomName);
+			setShowNameField(hasCustomName);
 			setEditingProviderId(providerId);
 			setIsAddingProvider(true);
 		}
@@ -319,11 +395,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 
 		return (
 			<Stack gap="md">
-				<TextInput
-					label="Name (optional)"
-					placeholder="My Provider"
-					{...register("name", { required: false, onBlur: handleAutoSubmit })}
-				/>
 				<Select
 					label="Provider Type"
 					data={[
@@ -337,6 +408,14 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 					value={selectedProvider}
 					onChange={(value) => {
 						if (value) {
+							if (value === "built-in") {
+								setIsNameManuallySet(false);
+								setShowNameField(false);
+								setValue("name", computeFallbackName("built-in", ""), {
+									shouldDirty: true,
+									shouldTouch: true,
+								});
+							}
 							setValue("providerKind", value as ProviderKind, {
 								shouldDirty: true,
 								shouldTouch: true,
@@ -403,6 +482,35 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						) : null}
 					</div>
 				)}
+				<UnstyledButton
+					className="flex items-center gap-2 text-xs font-medium text-slate-600"
+					onClick={() => setShowNameField((prev) => !prev)}
+					aria-expanded={showNameField}
+					aria-controls="provider-name-field"
+					type="button"
+				>
+					<span
+						className={
+							showNameField
+								? `i-lucide-chevron-down w-4 h-4`
+								: `i-lucide-chevron-right w-4 h-4`
+						}
+						aria-hidden="true"
+					/>
+					<span>Advanced Configurations</span>
+				</UnstyledButton>
+				{showNameField ? (
+					<TextInput
+						id="provider-name-field"
+						label="Name"
+						placeholder="My Provider"
+						{...register("name", {
+							required: false,
+							onBlur: handleAutoSubmit,
+							onChange: () => setIsNameManuallySet(true),
+						})}
+					/>
+				) : null}
 				<Group justify="flex-end" mt="md">
 					<Button
 						variant="subtle"
@@ -411,10 +519,15 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							setEditingProviderId(null);
 							reset();
 						}}
+						disabled={isSavingProvider}
 					>
 						Cancel
 					</Button>
-					<Button onClick={handleSubmit(handleSaveProvider)}>
+					<Button
+						onClick={handleSubmit(handleSaveProvider)}
+						loading={isSavingProvider}
+						disabled={isSavingProvider}
+					>
 						{editingProviderId ? "Update" : "Add"}
 					</Button>
 				</Group>
@@ -435,6 +548,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							apiKey: "",
 							providerKind: "openai-compatible",
 						});
+						setIsNameManuallySet(false);
+						setShowNameField(false);
 						setIsAddingProvider(true);
 					}}
 				>
@@ -448,52 +563,52 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			) : (
 				<Stack gap="sm">
 					{providers.map((provider) => (
-							<Card
-								key={provider.id}
-								withBorder
-								padding="sm"
-								radius="md"
-								className={
-									activeProviderId === provider.id
-										? "border-blue-500 bg-blue-50/50 cursor-pointer"
-										: "cursor-pointer"
+						<Card
+							key={provider.id}
+							withBorder
+							padding="sm"
+							radius="md"
+							className={
+								activeProviderId === provider.id
+									? "border-blue-500 bg-blue-50/50 cursor-pointer"
+									: "cursor-pointer"
+							}
+							onClick={() => handleSelectProvider(provider.id)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter" || event.key === " ") {
+									event.preventDefault();
+									handleSelectProvider(provider.id);
 								}
-								onClick={() => handleSelectProvider(provider.id)}
-								onKeyDown={(event) => {
-									if (event.key === "Enter" || event.key === " ") {
-										event.preventDefault();
-										handleSelectProvider(provider.id);
-									}
-								}}
-								role="button"
-								tabIndex={0}
-							>
-								<Group justify="space-between" align="center">
-									<Group gap="sm">
-										<ActionIcon
-											variant={
-												activeProviderId === provider.id ? "filled" : "default"
-											}
-											color={activeProviderId === provider.id ? "blue" : "gray"}
-											radius="xl"
-											size="sm"
-											onClick={(event) => {
-												event.stopPropagation();
-												void setActiveProvider(provider.id);
-											}}
-											aria-label={
-												activeProviderId === provider.id
-													? "Active provider"
+							}}
+							role="button"
+							tabIndex={0}
+						>
+							<Group justify="space-between" align="center">
+								<Group gap="sm">
+									<ActionIcon
+										variant={
+											activeProviderId === provider.id ? "filled" : "default"
+										}
+										color={activeProviderId === provider.id ? "blue" : "gray"}
+										radius="xl"
+										size="sm"
+										onClick={(event) => {
+											event.stopPropagation();
+											void setActiveProvider(provider.id);
+										}}
+										aria-label={
+											activeProviderId === provider.id
+												? "Active provider"
 												: "Set as active"
 										}
 									>
 										<span className="i-lucide-check w-3 h-3" />
 									</ActionIcon>
 									<div>
-									<Group gap="xs" className="max-w-[14rem] truncate">
-										<Text size="sm" fw={500} lineClamp={1}>
-											{provider.name}
-										</Text>
+										<Group gap="xs" className="max-w-[14rem] truncate">
+											<Text size="sm" fw={500} lineClamp={1}>
+												{provider.name}
+											</Text>
 										</Group>
 										<Text size="xs" c="dimmed">
 											{provider.kind === "openai-compatible"
@@ -512,9 +627,9 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 												disabled={Boolean(syncingProviderId)}
 												onClick={async (event) => {
 													event.stopPropagation();
-												if (syncingProviderId) {
-													return;
-												}
+													if (syncingProviderId) {
+														return;
+													}
 													setSyncingProviderId(provider.id);
 													try {
 														await syncModels();
