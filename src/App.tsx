@@ -29,6 +29,7 @@ const App = () => {
 		models,
 		activeModel,
 		setActiveModel,
+		enableBeforeUnloadWarning,
 		builtInAvailability,
 		hydrate,
 		refreshBuiltInAvailability,
@@ -39,6 +40,7 @@ const App = () => {
 			models: state.models,
 			activeModel: state.activeModel,
 			setActiveModel: state.setActiveModel,
+			enableBeforeUnloadWarning: state.enableBeforeUnloadWarning,
 			builtInAvailability: state.builtInAvailability,
 			hydrate: state.hydrate,
 			refreshBuiltInAvailability: state.refreshBuiltInAvailability,
@@ -160,7 +162,7 @@ const App = () => {
 		typeof editingMessageId !== "undefined" ||
 		chatMessages.length > 1;
 
-	useBeforeUnloadGuard(hasSessionState);
+	useBeforeUnloadGuard(enableBeforeUnloadWarning && hasSessionState);
 
 	const handleClearConversation = useCallback(() => {
 		clearConversation();

@@ -11,6 +11,7 @@ import {
 	Progress,
 	Select,
 	Stack,
+	Switch,
 	Text,
 	TextInput,
 	Title,
@@ -48,6 +49,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		removeProvider,
 		setActiveProvider,
 		syncModels,
+		enableBeforeUnloadWarning,
+		setEnableBeforeUnloadWarning,
 	} = useSettingsStore(
 		useShallow((state) => ({
 			providers: state.providers,
@@ -60,6 +63,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			removeProvider: state.removeProvider,
 			setActiveProvider: state.setActiveProvider,
 			syncModels: state.syncModels,
+			enableBeforeUnloadWarning: state.enableBeforeUnloadWarning,
+			setEnableBeforeUnloadWarning: state.setEnableBeforeUnloadWarning,
 		})),
 	);
 
@@ -266,9 +271,27 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	const renderGeneralTab = () => (
 		<Stack gap="md">
 			<Title order={4}>General Settings</Title>
-			<Text c="dimmed" size="sm">
-				General application settings will appear here.
-			</Text>
+			<Card withBorder padding="md" radius="md">
+				<Group justify="space-between" align="flex-start">
+					<div>
+						<Text size="sm" fw={500}>
+							Warn before leaving
+						</Text>
+						<Text size="sm" c="dimmed">
+							Show a confirmation dialog if you try to close or refresh while
+							there are unsent messages or active generations.
+						</Text>
+					</div>
+					<Switch
+						checked={enableBeforeUnloadWarning}
+						onChange={(event) => {
+							void setEnableBeforeUnloadWarning(event.currentTarget.checked);
+						}}
+						size="md"
+						aria-label="Toggle beforeunload warning"
+					/>
+				</Group>
+			</Card>
 		</Stack>
 	);
 
