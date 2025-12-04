@@ -38,24 +38,35 @@ const TextCompletionView = ({
 	const generatedTail =
 		prefixText.length > 0 ? value.slice(prefixText.length) : value;
 
-	const handleMouseMove = (e: React.MouseEvent<HTMLTextAreaElement>) => {
-		if (!textareaRef.current) return;
-		// Temporarily disable pointer events on textarea to hit-test the overlay
-		const prevPointerEvents = textareaRef.current.style.pointerEvents;
-		textareaRef.current.style.pointerEvents = "none";
-		const element = document.elementFromPoint(e.clientX, e.clientY);
-		textareaRef.current.style.pointerEvents = prevPointerEvents;
+	const requestRef = useRef<number>();
 
-		if (element instanceof HTMLElement) {
-			const indexStr = element.getAttribute("data-token-index");
-			if (indexStr) {
-				setHoveredIndex(parseInt(indexStr, 10));
+	const handleMouseMove = (e: React.MouseEvent<HTMLTextAreaElement>) => {
+		const clientX = e.clientX;
+		const clientY = e.clientY;
+
+		if (requestRef.current) {
+			cancelAnimationFrame(requestRef.current);
+		}
+
+		requestRef.current = requestAnimationFrame(() => {
+			if (!textareaRef.current) return;
+			// Temporarily disable pointer events on textarea to hit-test the overlay
+			const prevPointerEvents = textareaRef.current.style.pointerEvents;
+			textareaRef.current.style.pointerEvents = "none";
+			const element = document.elementFromPoint(clientX, clientY);
+			textareaRef.current.style.pointerEvents = prevPointerEvents;
+
+			if (element instanceof HTMLElement) {
+				const indexStr = element.getAttribute("data-token-index");
+				if (indexStr) {
+					setHoveredIndex(parseInt(indexStr, 10));
+				} else {
+					setHoveredIndex(null);
+				}
 			} else {
 				setHoveredIndex(null);
 			}
-		} else {
-			setHoveredIndex(null);
-		}
+		});
 	};
 
 	const handleMouseLeave = () => {
