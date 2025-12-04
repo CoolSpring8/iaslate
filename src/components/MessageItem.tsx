@@ -60,6 +60,8 @@ const MessageItem = ({
 				? [{ type: "text", text: message.content } satisfies MessageContentPart]
 				: []
 			: message.content;
+	const rerollDisabled =
+		disableReroll || !onRerollToken || Boolean(message.reasoning_content);
 	const tokensWithIndex =
 		tokenLogprobs?.map((token, index) => ({ token, index })) ?? [];
 	const contentTokenEntries = tokensWithIndex.filter(
@@ -71,7 +73,7 @@ const MessageItem = ({
 	const buildSelectHandler = (
 		entries: { token: TokenLogprob; index: number }[],
 	) =>
-		onRerollToken
+		onRerollToken && !rerollDisabled
 			? (tokenIndex: number, alternative: TokenAlternative) => {
 					const mapped = entries[tokenIndex];
 					if (!mapped) {
@@ -182,10 +184,7 @@ const MessageItem = ({
 								{isTokenView && reasoningTokenEntries.length > 0 ? (
 									<TokenInlineRenderer
 										tokens={reasoningTokenEntries.map((entry) => entry.token)}
-										onSelectAlternative={buildSelectHandler(
-											reasoningTokenEntries,
-										)}
-										disabled={disableReroll || !onRerollToken}
+										disabled
 									/>
 								) : (
 									<Markdown remarkPlugins={[]}>{reasoningText}</Markdown>
@@ -198,7 +197,7 @@ const MessageItem = ({
 					<TokenInlineRenderer
 						tokens={contentTokenEntries.map((entry) => entry.token)}
 						onSelectAlternative={buildSelectHandler(contentTokenEntries)}
-						disabled={disableReroll || !onRerollToken}
+						disabled={rerollDisabled}
 					/>
 				) : (
 					<div className="twp prose prose-p:whitespace-pre-wrap">

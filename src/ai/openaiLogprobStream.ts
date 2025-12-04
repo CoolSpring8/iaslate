@@ -238,6 +238,9 @@ export const streamChatCompletionWithProbs = async function* ({
 				? logprobs.content
 				: undefined;
 		if (entries?.length) {
+			if (segment === "content" && delta.content === null) {
+				continue;
+			}
 			const tokenLogprobs = entries
 				.map(
 					(entry: {
@@ -295,9 +298,11 @@ export const streamChatCompletionWithProbs = async function* ({
 			text:
 				segment === "reasoning"
 					? reasoningChunk
-					: typeof delta.content === "string"
-						? delta.content
-						: undefined,
+					: delta.content === null
+						? undefined
+						: typeof delta.content === "string"
+							? delta.content
+							: undefined,
 			topLogprobs: fallback,
 			segment,
 			reasoning: reasoningChunk,
