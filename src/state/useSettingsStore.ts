@@ -8,12 +8,20 @@ import type { BuiltInAvailability, ModelInfo, ProviderEntry } from "../types";
 
 import { v4 as uuidv4 } from "uuid";
 
+export const HEATMAP_THEMES = [
+	"traffic-light",
+	"monochrome-red",
+	"monochrome-blue",
+] as const;
+
+export type HeatmapTheme = (typeof HEATMAP_THEMES)[number];
+
 type StoredSettings = {
 	providers: ProviderEntry[];
 	activeProviderId: string | null;
 	enableBeforeUnloadWarning: boolean;
 	enableTokenHeatmap: boolean;
-	heatmapTheme: "traffic-light" | "monochrome-red" | "monochrome-blue";
+	heatmapTheme: HeatmapTheme;
 	// Legacy fields retained for backward compatibility; they are ignored in favor of per-provider storage
 	models?: ModelInfo[];
 	activeModel?: string | null;
@@ -24,15 +32,13 @@ interface SettingsState {
 	activeProviderId: string | null;
 	enableBeforeUnloadWarning: boolean;
 	enableTokenHeatmap: boolean;
-	heatmapTheme: "traffic-light" | "monochrome-red" | "monochrome-blue";
+	heatmapTheme: HeatmapTheme;
 	builtInAvailability: BuiltInAvailability;
 	isHydrated: boolean;
 	setActiveModel: (model: string | null) => void;
 	setEnableBeforeUnloadWarning: (enabled: boolean) => Promise<void>;
 	setEnableTokenHeatmap: (enabled: boolean) => Promise<void>;
-	setHeatmapTheme: (
-		theme: "traffic-light" | "monochrome-red" | "monochrome-blue",
-	) => Promise<void>;
+	setHeatmapTheme: (theme: HeatmapTheme) => Promise<void>;
 	setBuiltInAvailability: (availability: BuiltInAvailability) => void;
 	refreshBuiltInAvailability: () => Promise<void>;
 	hydrate: () => Promise<void>;

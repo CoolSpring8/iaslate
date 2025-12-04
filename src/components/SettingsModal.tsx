@@ -20,7 +20,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
-import { useSettingsStore } from "../state/useSettingsStore";
+import {
+	HEATMAP_THEMES,
+	type HeatmapTheme,
+	useSettingsStore,
+} from "../state/useSettingsStore";
 import type { BuiltInAvailability, ProviderKind } from "../types";
 
 interface SettingsFormValues {
@@ -36,6 +40,9 @@ interface SettingsModalProps {
 }
 
 type SettingsTab = "general" | "provider" | "display";
+
+const isHeatmapTheme = (value: string): value is HeatmapTheme =>
+	HEATMAP_THEMES.includes(value as HeatmapTheme);
 
 const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	const {
@@ -431,13 +438,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						]}
 						value={heatmapTheme}
 						onChange={(value) => {
-							if (value) {
-								void setHeatmapTheme(
-									value as
-										| "traffic-light"
-										| "monochrome-red"
-										| "monochrome-blue",
-								);
+							if (value && isHeatmapTheme(value)) {
+								void setHeatmapTheme(value);
 							}
 						}}
 						allowDeselect={false}

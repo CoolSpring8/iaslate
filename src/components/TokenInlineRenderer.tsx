@@ -59,7 +59,7 @@ const FloatingTokenMenu = ({
 					opacity: isPositioned ? 1 : 0,
 				}}
 				data-token-menu
-				className="!w-fit p-0 rounded bg-white shadow-md border border-slate-200 overflow-hidden transition-opacity duration-75"
+				className="!w-fit p-0 rounded bg-white shadow-md border border-solid border-slate-200 overflow-hidden transition-opacity duration-75"
 				onMouseEnter={onMouseEnter}
 				onMouseLeave={onMouseLeave}
 			>
@@ -72,7 +72,12 @@ const FloatingTokenMenu = ({
 								"flex flex-col items-center justify-between border border-solid border-l-0 border-y-0 border-slate-200 px-2 py-1 text-left text-sm text-slate-800 transition bg-white hover:bg-slate-50",
 								disabled ? "cursor-not-allowed opacity-60" : "",
 							)}
-							onClick={() => onSelect?.(alt)}
+							onClick={() => {
+								if (disabled) {
+									return;
+								}
+								onSelect?.(alt);
+							}}
 						>
 							<span className="font-mono">{formatToken(alt.token)}</span>
 							<span className="text-xs text-slate-500">
@@ -123,6 +128,17 @@ const TokenInlineRenderer = ({
 			}
 		}, 100);
 	};
+
+	useEffect(() => {
+		return () => {
+			if (closeTimer.current) {
+				clearTimeout(closeTimer.current);
+			}
+			if (openTimer.current) {
+				clearTimeout(openTimer.current);
+			}
+		};
+	}, []);
 
 	// Sync external hover to internal state
 	useEffect(() => {

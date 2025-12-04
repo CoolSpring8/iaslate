@@ -7,6 +7,12 @@ export type StreamChunk = {
 	tokenLogprobs?: TokenLogprob[];
 };
 
+type UserModelContent = Extract<ModelMessage, { role: "user" }>["content"];
+type AssistantModelContent = Extract<
+	ModelMessage,
+	{ role: "assistant" }
+>["content"];
+
 const normalizeTopLogprobs = (
 	raw:
 		| Array<{ token: string; logprob: number }>
@@ -89,6 +95,31 @@ const toStreamChunk = ({
 	};
 };
 
+const toTextContent = (content: Message["content"]) =>
+	typeof content === "string"
+		? content
+		: content
+				.filter((part) => part.type === "text")
+				.map((part) => part.text)
+				.join("\n\n");
+
+const toUserContent = (content: Message["content"]): UserModelContent =>
+	typeof content === "string"
+		? content
+		: content.map((part) =>
+				part.type === "text"
+					? { type: "text", text: part.text }
+					: {
+							type: "image",
+							image: part.image,
+							...(part.mimeType ? { mediaType: part.mimeType } : {}),
+						},
+			);
+
+const toAssistantContent = (
+	content: Message["content"],
+): AssistantModelContent => toTextContent(content);
+
 export const toModelMessages = (
 	messages: Message[],
 	assistantPrefix?: string,
@@ -101,27 +132,27 @@ export const toModelMessages = (
 		if (message.role === "system") {
 			normalized.push({
 				role: "system",
-				content: message.content,
-			} as unknown as ModelMessage);
+				content: toTextContent(message.content),
+			});
 			continue;
 		}
 		if (message.role === "user") {
 			normalized.push({
 				role: "user",
-				content: message.content,
-			} as unknown as ModelMessage);
+				content: toUserContent(message.content),
+			});
 			continue;
 		}
 		normalized.push({
 			role: "assistant",
-			content: message.content,
-		} as unknown as ModelMessage);
+			content: toAssistantContent(message.content),
+		});
 	}
 	if (assistantPrefix) {
 		normalized.push({
 			role: "assistant",
 			content: assistantPrefix,
-		} as unknown as ModelMessage);
+		});
 	}
 	return normalized;
 };
@@ -166,26 +197,21 @@ export const parseChatLogprobsChunk = (
 			? logprobs.content
 			: undefined;
 	if (entries?.length) {
-		const tokenLogprobs = entries
-			.map((entry) => {
-				const token = entry.token ?? "";
-				if (!token) {
-					return undefined;
-				}
-				const alternatives = withFallbackToken(
-					normalizeTopLogprobs(entry.top_logprobs),
-					token,
-				);
-				return {
-					token,
-					probability:
-						alternatives.find((alt) => alt.token === token)?.probability ??
-						undefined,
-					alternatives,
-					segment,
-				} satisfies TokenLogprob;
-			})
-			.filter(Boolean) as TokenLogprob[];
+		const tokenLogprobs: TokenLogprob[] = entries.map((entry) => {
+			const token = entry.token ?? "";
+			const alternatives = withFallbackToken(
+				normalizeTopLogprobs(entry.top_logprobs),
+				token,
+			);
+			return {
+				token,
+				probability:
+					alternatives.find((alt) => alt.token === token)?.probability ??
+					undefined,
+				alternatives,
+				segment,
+			};
+		});
 		if (tokenLogprobs.length > 0) {
 			const chunkText =
 				segment === "reasoning"
@@ -245,30 +271,25 @@ export const parseCompletionLogprobsChunk = (
 			? choice.logprobs.content
 			: undefined;
 	if (entries?.length) {
-		const tokenLogprobs = entries
-			.map((entry) => {
-				const token = entry.token ?? "";
-				if (!token) {
-					return undefined;
-				}
-				const alternatives = withFallbackToken(
-					normalizeTopLogprobs(
-						entry.top_logprobs as
-							| Array<{ token: string; logprob: number }>
-							| Record<string, number>,
-					),
-					token,
-				);
-				return {
-					token,
-					probability:
-						alternatives.find((alt) => alt.token === token)?.probability ??
-						undefined,
-					alternatives,
-					segment: "content",
-				} satisfies TokenLogprob;
-			})
-			.filter(Boolean) as TokenLogprob[];
+		const tokenLogprobs: TokenLogprob[] = entries.map((entry) => {
+			const token = entry.token ?? "";
+			const alternatives = withFallbackToken(
+				normalizeTopLogprobs(
+					entry.top_logprobs as
+						| Array<{ token: string; logprob: number }>
+						| Record<string, number>,
+				),
+				token,
+			);
+			return {
+				token,
+				probability:
+					alternatives.find((alt) => alt.token === token)?.probability ??
+					undefined,
+				alternatives,
+				segment: "content",
+			};
+		});
 		if (tokenLogprobs.length > 0) {
 			return {
 				content:

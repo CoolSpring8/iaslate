@@ -1,5 +1,5 @@
 import { Button } from "@mantine/core";
-import { useRef, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { TokenAlternative, TokenLogprob } from "../types";
 import TokenInlineRenderer from "./TokenInlineRenderer";
 
@@ -27,6 +27,7 @@ const TextCompletionView = ({
 	onCancel,
 	tokenLogprobs,
 	onTokenReroll,
+	showTokenOverlay = true,
 	generatedPrefix = "",
 }: TextCompletionViewProps) => {
 	const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -40,7 +41,7 @@ const TextCompletionView = ({
 
 	const requestRef = useRef<number>();
 
-	const handleMouseMove = (e: React.MouseEvent<HTMLTextAreaElement>) => {
+	const handleMouseMove = (e: MouseEvent<HTMLTextAreaElement>) => {
 		const clientX = e.clientX;
 		const clientY = e.clientY;
 
@@ -75,8 +76,23 @@ const TextCompletionView = ({
 	};
 
 	const handleMouseLeave = () => {
+		if (requestRef.current) {
+			cancelAnimationFrame(requestRef.current);
+			requestRef.current = undefined;
+		}
 		setHoveredIndex(null);
 	};
+
+	useEffect(() => {
+		return () => {
+			if (requestRef.current) {
+				cancelAnimationFrame(requestRef.current);
+			}
+		};
+	}, []);
+
+	const shouldShowTokens =
+		showTokenOverlay && tokenLogprobs && tokenLogprobs.length > 0;
 
 	return (
 		<div className="flex flex-1 min-h-0 flex-col gap-6 px-6 py-4">
@@ -98,7 +114,7 @@ const TextCompletionView = ({
 									{prefixText}
 								</span>
 							)}
-							{tokenLogprobs && tokenLogprobs.length > 0 ? (
+							{shouldShowTokens ? (
 								<TokenInlineRenderer
 									inline
 									tokens={tokenLogprobs}
@@ -125,8 +141,8 @@ const TextCompletionView = ({
 							ref={textareaRef}
 							value={value}
 							onChange={(event) => onChange(event.target.value)}
-							onMouseMove={handleMouseMove}
-							onMouseLeave={handleMouseLeave}
+							onMouseMove={showTokenOverlay ? handleMouseMove : undefined}
+							onMouseLeave={showTokenOverlay ? handleMouseLeave : undefined}
 							placeholder="Provide a seed paragraph and let the model continue it…"
 							className="absolute inset-0 h-full w-full resize-none overflow-hidden bg-transparent p-3 font-sans text-base leading-8 text-transparent caret-slate-900 focus:outline-none dark:text-transparent dark:caret-slate-100 border-none outline-none ring-0"
 							spellCheck={false}

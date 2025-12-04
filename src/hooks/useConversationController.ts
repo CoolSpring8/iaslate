@@ -186,7 +186,7 @@ export const useConversationController = ({
 			}
 			return true;
 		},
-		[areContentsEqual],
+		[areContentsEqual, areTokenLogprobsEqual],
 	);
 
 	const chatMessages = useConversationTree(

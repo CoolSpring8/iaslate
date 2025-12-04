@@ -97,17 +97,14 @@ export const useTextCompletion = ({
 		if (isGenerating) {
 			return;
 		}
-		const expectedText =
-			seedRef.current && tokenLogprobs.length > 0
-				? seedRef.current + tokenLogprobs.map((entry) => entry.token).join("")
-				: seedRef.current;
+		const canReuseTokens =
+			seedRef.current.length > 0 &&
+			textContent.startsWith(seedRef.current) &&
+			tokenLogprobs.length > 0;
+		let validTokenCount = 0;
+		let textAlignedWithTokens = false;
 
-		// Preserve token probabilities when the text still aligns with the seed
-		// and previously generated tokens. The overlay assumes the generated tail
-		// is fully represented by `tokenLogprobs`; edits that insert gaps force a reset.
-		if (expectedText && textContent.startsWith(seedRef.current)) {
-			// Calculate how many tokens are still valid
-			let validTokenCount = 0;
+		if (canReuseTokens) {
 			let currentCheck = seedRef.current;
 
 			for (const token of tokenLogprobs) {
@@ -119,40 +116,10 @@ export const useTextCompletion = ({
 					break;
 				}
 			}
-
-			if (validTokenCount < tokenLogprobs.length) {
-				// Drop trailing tokens that no longer line up with the current text.
-				setTokenLogprobs((draft) => draft.slice(0, validTokenCount));
-			}
+			textAlignedWithTokens = textContent.length === currentCheck.length;
 		}
 
-		// Decide whether existing tokens can be reused. We only keep them when
-		// textContent ends exactly at the last matched token; otherwise the overlay
-		// would skip user-typed text and we solidify everything into the seed.
-		let keepTokens = false;
-		let validTokenCount = 0;
-
-		if (seedRef.current && textContent.startsWith(seedRef.current)) {
-			let currentCheck = seedRef.current;
-			let matchCount = 0;
-
-			for (const token of tokenLogprobs) {
-				const nextCheck = currentCheck + token.token;
-				if (textContent.startsWith(nextCheck)) {
-					matchCount++;
-					currentCheck = nextCheck;
-				} else {
-					break;
-				}
-			}
-
-			if (textContent.length === currentCheck.length) {
-				keepTokens = true;
-				validTokenCount = matchCount;
-			}
-		}
-
-		if (keepTokens) {
+		if (canReuseTokens && textAlignedWithTokens) {
 			setTokenLogprobs((draft) => {
 				if (validTokenCount < draft.length) {
 					return draft.slice(0, validTokenCount);
