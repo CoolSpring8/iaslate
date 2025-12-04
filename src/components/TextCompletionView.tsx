@@ -57,6 +57,11 @@ const TextCompletionView = ({
 			textareaRef.current.style.pointerEvents = prevPointerEvents;
 
 			if (element instanceof HTMLElement) {
+				// If we are hovering over the menu, don't change the selection
+				if (element.closest("[data-token-menu]")) {
+					return;
+				}
+
 				const indexStr = element.getAttribute("data-token-index");
 				if (indexStr) {
 					setHoveredIndex(parseInt(indexStr, 10));
