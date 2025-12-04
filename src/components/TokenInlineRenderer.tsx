@@ -199,21 +199,9 @@ const TokenInlineRenderer = ({
 							key={`${token.token}-${index}`}
 							data-token-index={index}
 							className={twJoin(
-								"relative inline rounded-sm transition",
-								isActive
-									? "border-sky-400 bg-sky-50 shadow-[0_0_0_1px_rgba(56,189,248,0.25)]"
-									: "",
+								"relative inline rounded-sm",
+								isActive ? "outline outline-slate-700" : "",
 							)}
-							style={
-								isActive && probability !== undefined
-									? {
-											backgroundColor: `rgba(56, 189, 248, ${Math.min(
-												0.18,
-												Math.max(0.06, probability / 5),
-											)})`,
-										}
-									: undefined
-							}
 							onMouseEnter={(e) => {
 								if (externalHoveredIndex === undefined) {
 									// Immediate highlight
