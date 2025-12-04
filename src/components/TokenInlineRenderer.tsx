@@ -95,46 +95,53 @@ const TokenInlineRenderer = ({
 						? token.alternatives
 						: [{ token: token.token, probability: probability ?? 0 }];
 				const isActive = effectiveHoveredIndex === index;
+
+				const tokenSpan = (
+					<span
+						data-token-index={index}
+						className={twJoin(
+							"relative inline rounded-sm transition",
+							isActive
+								? "border-sky-400 bg-sky-50 shadow-[0_0_0_1px_rgba(56,189,248,0.25)]"
+								: "",
+						)}
+						style={
+							isActive && probability !== undefined
+								? {
+										backgroundColor: `rgba(56, 189, 248, ${Math.min(
+											0.18,
+											Math.max(0.06, probability / 5),
+										)})`,
+									}
+								: undefined
+						}
+						onMouseEnter={() => {
+							if (closeTimer.current) {
+								clearTimeout(closeTimer.current);
+							}
+							setInternalHoveredIndex(index);
+						}}
+						onMouseLeave={scheduleClose}
+					>
+						{token.token}
+					</span>
+				);
+
+				if (!isActive) {
+					return <span key={`${token.token}-${index}`}>{tokenSpan}</span>;
+				}
+
 				return (
 					<Popover
 						key={`${token.token}-${index}`}
 						width={280}
 						shadow="md"
-						opened={isActive}
+						opened={true}
 						withinPortal
 						position="top"
 						offset={0}
 					>
-						<Popover.Target>
-							<span
-								data-token-index={index}
-								className={twJoin(
-									"relative inline rounded-sm transition",
-									isActive
-										? "border-sky-400 bg-sky-50 shadow-[0_0_0_1px_rgba(56,189,248,0.25)]"
-										: "",
-								)}
-								style={
-									isActive && probability !== undefined
-										? {
-												backgroundColor: `rgba(56, 189, 248, ${Math.min(
-													0.18,
-													Math.max(0.06, probability / 5),
-												)})`,
-											}
-										: undefined
-								}
-								onMouseEnter={() => {
-									if (closeTimer.current) {
-										clearTimeout(closeTimer.current);
-									}
-									setInternalHoveredIndex(index);
-								}}
-								onMouseLeave={scheduleClose}
-							>
-								{token.token}
-							</span>
-						</Popover.Target>
+						<Popover.Target>{tokenSpan}</Popover.Target>
 						<Popover.Dropdown
 							className="!w-fit p-0"
 							onMouseEnter={() => {
