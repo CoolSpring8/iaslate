@@ -60,6 +60,26 @@ const MessageItem = ({
 				? [{ type: "text", text: message.content } satisfies MessageContentPart]
 				: []
 			: message.content;
+	const tokensWithIndex =
+		tokenLogprobs?.map((token, index) => ({ token, index })) ?? [];
+	const contentTokenEntries = tokensWithIndex.filter(
+		(entry) => entry.token.segment !== "reasoning",
+	);
+	const reasoningTokenEntries = tokensWithIndex.filter(
+		(entry) => entry.token.segment === "reasoning",
+	);
+	const buildSelectHandler = (
+		entries: { token: TokenLogprob; index: number }[],
+	) =>
+		onRerollToken
+			? (tokenIndex: number, alternative: TokenAlternative) => {
+					const mapped = entries[tokenIndex];
+					if (!mapped) {
+						return;
+					}
+					onRerollToken(mapped.index, alternative);
+				}
+			: undefined;
 
 	const handleCopy = async () => {
 		try {
@@ -132,7 +152,7 @@ const MessageItem = ({
 									</div>
 								</Popover.Dropdown>
 							</Popover>
-							{tokenLogprobs && tokenLogprobs.length > 0 && (
+							{tokensWithIndex.length > 0 && (
 								<UnstyledButton
 									className="i-lucide-sparkles text-slate-400 hover:text-slate-600 transition"
 									title={isTokenView ? "Hide token view" : "Show token view"}
@@ -159,19 +179,25 @@ const MessageItem = ({
 						</UnstyledButton>
 						{isReasoningExpanded && (
 							<div className="twp prose prose-p:whitespace-pre-wrap px-2 pt-1 pb-3 text-sm text-slate-500">
-								<Markdown remarkPlugins={[]}>{reasoningText}</Markdown>
+								{isTokenView && reasoningTokenEntries.length > 0 ? (
+									<TokenInlineRenderer
+										tokens={reasoningTokenEntries.map((entry) => entry.token)}
+										onSelectAlternative={buildSelectHandler(
+											reasoningTokenEntries,
+										)}
+										disabled={disableReroll || !onRerollToken}
+									/>
+								) : (
+									<Markdown remarkPlugins={[]}>{reasoningText}</Markdown>
+								)}
 							</div>
 						)}
 					</div>
 				)}
-				{isTokenView && tokenLogprobs && tokenLogprobs.length > 0 ? (
+				{isTokenView && contentTokenEntries.length > 0 ? (
 					<TokenInlineRenderer
-						tokens={tokenLogprobs}
-						onSelectAlternative={
-							onRerollToken
-								? (index, alternative) => onRerollToken(index, alternative)
-								: undefined
-						}
+						tokens={contentTokenEntries.map((entry) => entry.token)}
+						onSelectAlternative={buildSelectHandler(contentTokenEntries)}
 						disabled={disableReroll || !onRerollToken}
 					/>
 				) : (

@@ -127,37 +127,48 @@ async function* parseEventStream(response: Response) {
 }
 
 const toStreamChunk = ({
-	content,
+	text,
 	topLogprobs,
+	segment,
 	reasoning,
 }: {
-	content?: string;
+	text?: string;
 	topLogprobs?:
 		| Array<{ token: string; logprob: number }>
 		| Record<string, number>;
+	segment: "content" | "reasoning";
 	reasoning?: string;
 }): StreamChunk | undefined => {
-	if (!content && !reasoning) {
+	if (text === undefined) {
 		return undefined;
 	}
-	const alternatives = content
-		? withFallbackToken(normalizeTopLogprobs(topLogprobs), content)
-		: [];
+	const alternatives = withFallbackToken(
+		normalizeTopLogprobs(topLogprobs),
+		text,
+	);
+	const tokenLogprobs =
+		alternatives.length > 0
+			? [
+					{
+						token: text,
+						probability:
+							alternatives.find((entry) => entry.token === text)?.probability ??
+							undefined,
+						alternatives,
+						segment,
+					},
+				]
+			: undefined;
+	if (segment === "reasoning") {
+		return {
+			reasoning: text,
+			tokenLogprobs,
+		};
+	}
 	return {
-		content,
+		content: text,
+		tokenLogprobs,
 		reasoning,
-		tokenLogprobs:
-			content && alternatives.length
-				? [
-						{
-							token: content,
-							probability:
-								alternatives.find((entry) => entry.token === content)
-									?.probability ?? undefined,
-							alternatives,
-						},
-					]
-				: undefined,
 	};
 };
 
@@ -177,7 +188,7 @@ export const streamChatCompletionWithProbs = async function* ({
 	signal?: AbortSignal;
 	topLogprobs?: number;
 	temperature?: number;
-}) {
+}): AsyncGenerator<StreamChunk> {
 	const endpoint = buildURL(baseURL, "/chat/completions");
 	const response = await fetch(endpoint, {
 		method: "POST",
@@ -220,6 +231,8 @@ export const streamChatCompletionWithProbs = async function* ({
 				: Array.isArray(delta.reasoning_content)
 					? delta.reasoning_content.join("")
 					: undefined;
+		const segment: "content" | "reasoning" =
+			reasoningChunk !== undefined ? "reasoning" : "content";
 		const entries =
 			Array.isArray(logprobs?.content) && logprobs.content.length > 0
 				? logprobs.content
@@ -247,15 +260,29 @@ export const streamChatCompletionWithProbs = async function* ({
 								alternatives.find((alt) => alt.token === token)?.probability ??
 								undefined,
 							alternatives,
+							segment,
 						} satisfies TokenLogprob;
 					},
 				)
 				.filter(Boolean) as TokenLogprob[];
 			if (tokenLogprobs.length > 0) {
+				const chunkText =
+					segment === "reasoning"
+						? reasoningChunk ??
+							tokenLogprobs.map((entry) => entry.token).join("")
+						: typeof delta.content === "string"
+							? delta.content
+							: undefined;
 				yield {
-					content: tokenLogprobs.map((entry) => entry.token).join(""),
+					...(chunkText !== undefined
+						? segment === "reasoning"
+							? { reasoning: chunkText }
+							: { content: chunkText }
+						: {}),
 					tokenLogprobs,
-					reasoning: reasoningChunk,
+					...(segment === "content" && reasoningChunk
+						? { reasoning: reasoningChunk }
+						: {}),
 				} satisfies StreamChunk;
 			}
 			continue;
@@ -265,8 +292,14 @@ export const streamChatCompletionWithProbs = async function* ({
 			logprobs?.top_logprobs?.[0] ??
 			undefined;
 		const streamChunk = toStreamChunk({
-			content: delta.content,
+			text:
+				segment === "reasoning"
+					? reasoningChunk
+					: typeof delta.content === "string"
+						? delta.content
+						: undefined,
 			topLogprobs: fallback,
+			segment,
 			reasoning: reasoningChunk,
 		});
 		if (streamChunk) {
@@ -293,7 +326,7 @@ export const streamCompletionWithProbs = async function* ({
 	topLogprobs?: number;
 	temperature?: number;
 	maxTokens?: number;
-}) {
+}): AsyncGenerator<StreamChunk> {
 	const endpoint = buildURL(baseURL, "/completions");
 	const response = await fetch(endpoint, {
 		method: "POST",
@@ -353,22 +386,28 @@ export const streamCompletionWithProbs = async function* ({
 							alternatives.find((alt) => alt.token === token)?.probability ??
 							undefined,
 						alternatives,
+						segment: "content",
 					} satisfies TokenLogprob;
 				})
 				.filter(Boolean) as TokenLogprob[];
 			if (tokenLogprobs.length > 0) {
+				const chunkText =
+					typeof choice.text === "string"
+						? choice.text
+						: tokenLogprobs.map((entry) => entry.token).join("");
 				yield {
-					content: tokenLogprobs.map((entry) => entry.token).join(""),
+					content: chunkText,
 					tokenLogprobs,
 				} satisfies StreamChunk;
 			}
 			continue;
 		}
 		const streamChunk = toStreamChunk({
-			content: choice.text,
+			text: typeof choice.text === "string" ? choice.text : undefined,
 			topLogprobs:
 				choice.logprobs?.top_logprobs?.[0] ??
 				choice.logprobs?.content?.[0]?.top_logprobs,
+			segment: "content",
 		});
 		if (streamChunk) {
 			yield streamChunk;

@@ -136,7 +136,7 @@ export const sendMessage = async (
 				signal: abortController.signal,
 			});
 			for await (const part of stream) {
-				if (part.content) {
+				if (part.content || part.tokenLogprobs?.length) {
 					appendToNode(assistantId, {
 						content: part.content,
 						reasoning: part.reasoning,

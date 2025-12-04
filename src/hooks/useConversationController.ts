@@ -130,7 +130,8 @@ export const useConversationController = ({
 				}
 				if (
 					tokA.token !== tokB.token ||
-					tokA.probability !== tokB.probability
+					tokA.probability !== tokB.probability ||
+					tokA.segment !== tokB.segment
 				) {
 					return false;
 				}
@@ -397,14 +398,24 @@ export const useConversationController = ({
 						(alt) => alt.token !== replacement.token,
 					),
 				],
+				segment: targetToken.segment,
 			};
 			const seedTokens = [...prefixTokens, replacementEntry];
 			const seedText = seedTokens.map((entry) => entry.token).join("");
+			const seedReasoning = seedTokens
+				.filter((entry) => entry.segment === "reasoning")
+				.map((entry) => entry.token)
+				.join("");
+			const seedContent = seedTokens
+				.filter((entry) => entry.segment !== "reasoning")
+				.map((entry) => entry.token)
+				.join("");
 			const assistantId = createAssistantAfter(parentId);
 			setNodeStatus(assistantId, "streaming");
 			setActiveTarget(assistantId);
 			appendToNode(assistantId, {
-				content: seedText,
+				content: seedContent || undefined,
+				reasoning: seedReasoning || undefined,
 				tokenLogprobs: seedTokens,
 			});
 			const abortController = new AbortController();
@@ -422,7 +433,7 @@ export const useConversationController = ({
 						signal: abortController.signal,
 					});
 					for await (const chunk of stream) {
-						if (chunk.content) {
+						if (chunk.content || chunk.tokenLogprobs?.length) {
 							appendToNode(assistantId, {
 								content: chunk.content,
 								reasoning: chunk.reasoning,

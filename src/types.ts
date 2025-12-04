@@ -23,6 +23,7 @@ export interface Message {
 export interface TokenLogprob {
 	token: string;
 	probability?: number;
+	segment?: "content" | "reasoning";
 	alternatives: TokenAlternative[];
 }
 
