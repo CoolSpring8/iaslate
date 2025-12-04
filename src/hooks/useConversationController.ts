@@ -1,10 +1,13 @@
+import { streamText } from "ai";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "../ai/openaiCompatible";
 import {
-	streamChatCompletionWithProbs,
-	toOpenAIChatMessages,
-} from "../ai/openaiLogprobStream";
+	buildChatLogprobOptions,
+	parseChatLogprobsChunk,
+	toModelMessages,
+} from "../ai/openaiLogprobs";
 import { sendMessage } from "../ai/sendMessage";
 import { useConversationTree } from "../tree/useConversationTree";
 import type {
@@ -423,24 +426,44 @@ export const useConversationController = ({
 			void (async () => {
 				try {
 					setIsGenerating(true);
-					const stream = streamChatCompletionWithProbs({
-						baseURL: readiness.baseURL,
-						apiKey: readiness.apiKey,
-						model: readiness.modelId,
-						messages: toOpenAIChatMessages(compilePathTo(parentId), {
-							assistantPrefix: seedText,
-						}),
-						signal: abortController.signal,
+					const stream = streamText({
+						model: readiness.openAIProvider.chatModel(readiness.modelId),
+						messages: toModelMessages(
+							compilePathTo(parentId),
+							seedText || undefined,
+						),
+						temperature: 0.3,
+						abortSignal: abortController.signal,
+						includeRawChunks: true,
+						providerOptions: buildChatLogprobOptions(
+							OPENAI_COMPATIBLE_PROVIDER_NAME,
+						),
 					});
-					for await (const chunk of stream) {
-						if (chunk.content || chunk.tokenLogprobs?.length) {
+					for await (const part of stream.fullStream) {
+						if (part.type === "text-delta" && part.text) {
 							appendToNode(assistantId, {
-								content: chunk.content,
-								reasoning: chunk.reasoning,
-								tokenLogprobs: chunk.tokenLogprobs,
+								content: part.text,
 							});
-						} else if (chunk.reasoning) {
-							appendToNode(assistantId, { reasoning: chunk.reasoning });
+						}
+						if (part.type === "reasoning-delta" && part.text) {
+							appendToNode(assistantId, { reasoning: part.text });
+						}
+						if (part.type === "raw") {
+							const chunk = parseChatLogprobsChunk(part.rawValue);
+							if (chunk?.tokenLogprobs?.length) {
+								appendToNode(assistantId, {
+									tokenLogprobs: chunk.tokenLogprobs,
+								});
+							}
+						}
+						if (part.type === "error") {
+							throw new Error(
+								typeof part.error === "string"
+									? part.error
+									: part.error instanceof Error
+										? part.error.message
+										: "Failed to stream response",
+							);
 						}
 					}
 					setNodeStatus(assistantId, "final");

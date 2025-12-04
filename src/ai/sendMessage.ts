@@ -6,10 +6,12 @@ import type {
 	MessageContent,
 	TokenLogprob,
 } from "../types";
+import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "./openaiCompatible";
 import {
-	streamChatCompletionWithProbs,
-	toOpenAIChatMessages,
-} from "./openaiLogprobStream";
+	buildChatLogprobOptions,
+	parseChatLogprobsChunk,
+	toModelMessages,
+} from "./openaiLogprobs";
 
 export interface SendMessageContext {
 	provider: ChatProviderReady;
@@ -128,24 +130,44 @@ export const sendMessage = async (
 			}
 			setNodeStatus(assistantId, "final");
 		} else {
-			const stream = streamChatCompletionWithProbs({
-				baseURL: provider.baseURL,
-				apiKey: provider.apiKey,
-				model: provider.modelId,
-				messages: toOpenAIChatMessages(filteredContext),
-				signal: abortController.signal,
+			const modelMessages = toModelMessages(filteredContext);
+			const stream = streamText({
+				model: provider.openAIProvider.chatModel(provider.modelId),
+				messages: modelMessages,
+				temperature: 0.3,
+				abortSignal: abortController.signal,
+				includeRawChunks: true,
+				providerOptions: buildChatLogprobOptions(
+					OPENAI_COMPATIBLE_PROVIDER_NAME,
+				),
 			});
-			for await (const part of stream) {
-				if (part.content || part.tokenLogprobs?.length) {
+			for await (const part of stream.fullStream) {
+				if (part.type === "text-delta" && part.text) {
 					appendToNode(assistantId, {
-						content: part.content,
-						reasoning: part.reasoning,
-						tokenLogprobs: part.tokenLogprobs,
+						content: part.text,
 					});
-				} else if (part.reasoning) {
+				}
+				if (part.type === "reasoning-delta" && part.text) {
 					appendToNode(assistantId, {
-						reasoning: part.reasoning,
+						reasoning: part.text,
 					});
+				}
+				if (part.type === "raw") {
+					const chunk = parseChatLogprobsChunk(part.rawValue);
+					if (chunk?.tokenLogprobs?.length) {
+						appendToNode(assistantId, {
+							tokenLogprobs: chunk.tokenLogprobs,
+						});
+					}
+				}
+				if (part.type === "error") {
+					throw new Error(
+						typeof part.error === "string"
+							? part.error
+							: part.error instanceof Error
+								? part.error.message
+								: "Failed to stream response",
+					);
 				}
 			}
 			setNodeStatus(assistantId, "final");

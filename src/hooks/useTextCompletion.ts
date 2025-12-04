@@ -1,7 +1,12 @@
+import { streamText } from "ai";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useImmer } from "use-immer";
-import { streamCompletionWithProbs } from "../ai/openaiLogprobStream";
+import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "../ai/openaiCompatible";
+import {
+	buildCompletionLogprobOptions,
+	parseCompletionLogprobsChunk,
+} from "../ai/openaiLogprobs";
 import type {
 	CompletionProviderReady,
 	TokenAlternative,
@@ -40,22 +45,36 @@ export const useTextCompletion = ({
 			}
 			setIsGenerating(true);
 			try {
-				const stream = streamCompletionWithProbs({
-					baseURL: readiness.baseURL,
-					apiKey: readiness.apiKey,
-					model: readiness.modelId,
+				const stream = streamText({
+					model: readiness.openAIProvider.completionModel(readiness.modelId),
 					prompt: seedText,
 					temperature: 0.3,
-					signal: abortController.signal,
+					abortSignal: abortController.signal,
+					includeRawChunks: true,
+					providerOptions: buildCompletionLogprobOptions(
+						OPENAI_COMPATIBLE_PROVIDER_NAME,
+					),
 				});
-				for await (const chunk of stream) {
-					if (chunk.content) {
-						setTextContent((draft) => draft + chunk.content);
+				for await (const part of stream.fullStream) {
+					if (part.type === "text-delta" && part.text) {
+						setTextContent((draft) => draft + part.text);
 					}
-					if (chunk.tokenLogprobs?.length) {
-						setTokenLogprobs((draft) => {
-							draft.push(...chunk.tokenLogprobs!);
-						});
+					if (part.type === "raw") {
+						const chunk = parseCompletionLogprobsChunk(part.rawValue);
+						if (chunk?.tokenLogprobs?.length) {
+							setTokenLogprobs((draft) => {
+								draft.push(...chunk.tokenLogprobs!);
+							});
+						}
+					}
+					if (part.type === "error") {
+						throw new Error(
+							typeof part.error === "string"
+								? part.error
+								: part.error instanceof Error
+									? part.error.message
+									: "Failed to stream completion",
+						);
 					}
 				}
 			} catch (error) {
