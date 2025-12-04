@@ -8,6 +8,7 @@ import {
 } from "@floating-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { twJoin } from "tailwind-merge";
+import { useSettingsStore } from "../state/useSettingsStore";
 import type { TokenAlternative, TokenLogprob } from "../types";
 
 interface TokenInlineRendererProps {
@@ -99,6 +100,10 @@ const TokenInlineRenderer = ({
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const isHoveringMenuRef = useRef(false);
+	const enableTokenHeatmap = useSettingsStore(
+		(state) => state.enableTokenHeatmap,
+	);
+	const heatmapTheme = useSettingsStore((state) => state.heatmapTheme);
 
 	const Container = inline ? "span" : "div";
 
@@ -194,14 +199,43 @@ const TokenInlineRenderer = ({
 						undefined;
 					const isActive = index === highlightIndex || index === tooltipIndex;
 
+					let backgroundColor: string | undefined;
+					if (enableTokenHeatmap && probability !== undefined) {
+						if (heatmapTheme === "traffic-light") {
+							if (probability > 0.9) {
+								// No background for high probability
+							} else if (probability > 0.5) {
+								// Yellow/Orange for medium probability
+								// Calculate opacity based on probability: 0.9 -> 0.1, 0.5 -> 0.4
+								const opacity = 0.1 + ((0.9 - probability) / 0.4) * 0.3;
+								backgroundColor = `rgba(255, 165, 0, ${opacity})`;
+							} else {
+								// Red for low probability
+								// Calculate opacity based on probability: 0.5 -> 0.2, 0.0 -> 0.5
+								const opacity = 0.2 + ((0.5 - probability) / 0.5) * 0.3;
+								backgroundColor = `rgba(255, 0, 0, ${opacity})`;
+							}
+						} else if (heatmapTheme === "monochrome-red") {
+							// Red with opacity inversely proportional to probability
+							// Cap opacity at 0.5 for readability
+							const opacity = Math.min(0.5, (1 - probability) * 0.6);
+							backgroundColor = `rgba(255, 0, 0, ${opacity})`;
+						} else if (heatmapTheme === "monochrome-blue") {
+							// Blue with opacity inversely proportional to probability
+							const opacity = Math.min(0.5, (1 - probability) * 0.6);
+							backgroundColor = `rgba(0, 0, 255, ${opacity})`;
+						}
+					}
+
 					return (
 						<span
 							key={`${token.token}-${index}`}
 							data-token-index={index}
 							className={twJoin(
-								"relative inline rounded-sm",
+								"relative inline rounded-sm transition-colors",
 								isActive ? "outline outline-slate-700" : "",
 							)}
+							style={{ backgroundColor }}
 							onMouseEnter={(e) => {
 								if (externalHoveredIndex === undefined) {
 									// Immediate highlight

@@ -35,7 +35,7 @@ interface SettingsModalProps {
 	onClose: () => void;
 }
 
-type SettingsTab = "general" | "provider";
+type SettingsTab = "general" | "provider" | "display";
 
 const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	const {
@@ -51,6 +51,10 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		syncModels,
 		enableBeforeUnloadWarning,
 		setEnableBeforeUnloadWarning,
+		enableTokenHeatmap,
+		setEnableTokenHeatmap,
+		heatmapTheme,
+		setHeatmapTheme,
 	} = useSettingsStore(
 		useShallow((state) => ({
 			providers: state.providers,
@@ -65,6 +69,10 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			syncModels: state.syncModels,
 			enableBeforeUnloadWarning: state.enableBeforeUnloadWarning,
 			setEnableBeforeUnloadWarning: state.setEnableBeforeUnloadWarning,
+			enableTokenHeatmap: state.enableTokenHeatmap,
+			setEnableTokenHeatmap: state.setEnableTokenHeatmap,
+			heatmapTheme: state.heatmapTheme,
+			setHeatmapTheme: state.setHeatmapTheme,
 		})),
 	);
 
@@ -382,6 +390,60 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						aria-label="Toggle beforeunload warning"
 					/>
 				</Group>
+			</Card>
+		</Stack>
+	);
+
+	const renderDisplayTab = () => (
+		<Stack gap="md">
+			<Title order={4}>Display Settings</Title>
+			<Card withBorder padding="md" radius="md">
+				<Group justify="space-between" align="flex-start">
+					<div>
+						<Text size="sm" fw={500}>
+							Token Probability Heatmap
+						</Text>
+						<Text size="sm" c="dimmed">
+							Colorize tokens based on their probability. Low probability tokens
+							will appear redder.
+						</Text>
+					</div>
+					<Switch
+						checked={enableTokenHeatmap}
+						onChange={(event) => {
+							void setEnableTokenHeatmap(event.currentTarget.checked);
+						}}
+						size="md"
+						aria-label="Toggle token heatmap"
+					/>
+				</Group>
+				{enableTokenHeatmap && (
+					<Select
+						label="Heatmap Theme"
+						description="Choose a color scheme for the token probability heatmap."
+						data={[
+							{
+								label: "Traffic Light (Green/Yellow/Red)",
+								value: "traffic-light",
+							},
+							{ label: "Monochrome Red", value: "monochrome-red" },
+							{ label: "Monochrome Blue", value: "monochrome-blue" },
+						]}
+						value={heatmapTheme}
+						onChange={(value) => {
+							if (value) {
+								void setHeatmapTheme(
+									value as
+										| "traffic-light"
+										| "monochrome-red"
+										| "monochrome-blue",
+								);
+							}
+						}}
+						allowDeselect={false}
+						mt="md"
+					/>
+				)}
 			</Card>
 		</Stack>
 	);
@@ -706,6 +768,14 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						className="rounded-md"
 					/>
 					<NavLink
+						label="Display"
+						leftSection={<span className="i-lucide-monitor w-4 h-4" />}
+						active={activeTab === "display"}
+						onClick={() => setActiveTab("display")}
+						variant="light"
+						className="rounded-md"
+					/>
+					<NavLink
 						label="Provider"
 						leftSection={<span className="i-lucide-cloud w-4 h-4" />}
 						active={activeTab === "provider"}
@@ -719,6 +789,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				<div className="flex-1 flex flex-col">
 					<div className="flex-1 p-4 overflow-y-auto">
 						{activeTab === "general" && renderGeneralTab()}
+						{activeTab === "display" && renderDisplayTab()}
 						{activeTab === "provider" &&
 							(isAddingProvider ? renderProviderForm() : renderProviderList())}
 					</div>
