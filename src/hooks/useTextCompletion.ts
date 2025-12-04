@@ -192,11 +192,14 @@ export const useTextCompletion = ({
 
 	const overwriteTextContent = useCallback(
 		(value: string) => {
+			if (isGenerating) {
+				cancel();
+			}
 			seedRef.current = value;
 			setTokenLogprobs([]);
 			setTextContent(value);
 		},
-		[setTextContent, setTokenLogprobs],
+		[cancel, isGenerating, setTextContent, setTokenLogprobs],
 	);
 
 	return {
