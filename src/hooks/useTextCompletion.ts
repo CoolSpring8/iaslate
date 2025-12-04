@@ -170,6 +170,7 @@ export const useTextCompletion = ({
 				token: replacement.token,
 				probability: replacement.probability,
 				alternatives: updatedAlternatives,
+				segment: target.segment,
 			};
 			const newSeed =
 				seedRef.current +
