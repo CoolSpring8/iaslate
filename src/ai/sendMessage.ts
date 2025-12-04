@@ -71,20 +71,38 @@ export const sendMessage = async (
 	if (!resolvedParentId) {
 		resolvedParentId = createSystemMessage(defaultSystemPrompt);
 	}
-	if (hasContent) {
-		resolvedParentId = createUserAfter(resolvedParentId, promptContent);
-	}
-	const contextMessages = compilePathTo(resolvedParentId);
-	const lastMessage = contextMessages[contextMessages.length - 1];
+
+	const currentContext = compilePathTo(resolvedParentId);
+	const lastMessage = currentContext[currentContext.length - 1];
+	const isTextOnly =
+		typeof promptContent === "string" ||
+		(Array.isArray(promptContent) &&
+			promptContent.every((p) => p.type === "text"));
 	const shouldAppendToAssistant =
-		provider.kind === "built-in" &&
-		!hasContent &&
-		lastMessage?.role === "assistant";
-	const assistantId = shouldAppendToAssistant
-		? lastMessage._metadata.uuid
-		: createAssistantAfter(resolvedParentId);
+		lastMessage?.role === "assistant" && isTextOnly;
+
+	let assistantId: string;
+
+	if (shouldAppendToAssistant) {
+		assistantId = lastMessage._metadata.uuid;
+		if (hasContent) {
+			const text =
+				typeof promptContent === "string"
+					? promptContent
+					: promptContent.map((p) => p.text).join("\n\n");
+			appendToNode(assistantId, { content: text });
+		}
+	} else {
+		if (hasContent) {
+			resolvedParentId = createUserAfter(resolvedParentId, promptContent);
+		}
+		assistantId = createAssistantAfter(resolvedParentId);
+	}
+
+	const contextMessages = compilePathTo(assistantId);
 	const shouldPrefixAssistant =
 		provider.kind === "built-in" && shouldAppendToAssistant;
+
 	setNodeStatus(assistantId, "streaming");
 	setActiveTarget(assistantId);
 	const abortController = new AbortController();
@@ -180,7 +198,9 @@ export const sendMessage = async (
 			throw error;
 		}
 	} finally {
-		setIsGenerating(false);
+		if (streamManager.getLatest() === assistantId) {
+			setIsGenerating(false);
+		}
 		streamManager.clearLatestIf(assistantId);
 	}
 };

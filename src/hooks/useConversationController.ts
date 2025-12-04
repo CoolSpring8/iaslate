@@ -476,7 +476,9 @@ export const useConversationController = ({
 						console.error(error);
 					}
 				} finally {
-					setIsGenerating(false);
+					if (streamManager.getLatest() === assistantId) {
+						setIsGenerating(false);
+					}
 					streamManager.clearLatestIf(assistantId);
 				}
 			})();
