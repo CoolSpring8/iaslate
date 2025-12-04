@@ -79,7 +79,7 @@ const TokenInlineRenderer = ({
 	return (
 		<Container
 			className={twJoin(
-				"relative whitespace-pre-wrap font-sans text-base leading-8 text-[#374151] dark:text-slate-100",
+				"relative whitespace-pre-wrap",
 				inline ? "inline" : "w-full",
 				className,
 			)}

@@ -194,11 +194,13 @@ const MessageItem = ({
 					</div>
 				)}
 				{isTokenView && contentTokenEntries.length > 0 ? (
-					<TokenInlineRenderer
-						tokens={contentTokenEntries.map((entry) => entry.token)}
-						onSelectAlternative={buildSelectHandler(contentTokenEntries)}
-						disabled={rerollDisabled}
-					/>
+					<div className="twp prose prose-p:whitespace-pre-wrap">
+						<TokenInlineRenderer
+							tokens={contentTokenEntries.map((entry) => entry.token)}
+							onSelectAlternative={buildSelectHandler(contentTokenEntries)}
+							disabled={rerollDisabled}
+						/>
+					</div>
 				) : (
 					<div className="twp prose prose-p:whitespace-pre-wrap">
 						{contentParts.map((part, index) =>
