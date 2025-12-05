@@ -37,7 +37,7 @@ interface SettingsFormValues {
 	baseURL: string;
 	apiKey: string;
 	providerKind: ProviderKind;
-	tokensPerSecond: number;
+	tokensPerSecond: number | null;
 }
 
 interface SettingsModalProps {
@@ -323,12 +323,15 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				const fallbackName =
 					trimmedName ||
 					computeFallbackName(values.providerKind, values.baseURL);
-
+				const resolvedTokensPerSecond =
+					values.tokensPerSecond && values.tokensPerSecond > 0
+						? values.tokensPerSecond
+						: 10;
 				let config: ProviderEntry["config"] = {};
 				if (values.providerKind === "openai-compatible") {
 					config = { baseURL: values.baseURL, apiKey: values.apiKey };
 				} else if (values.providerKind === "dummy") {
-					config = { tokensPerSecond: values.tokensPerSecond };
+					config = { tokensPerSecond: resolvedTokensPerSecond };
 				}
 
 				if (editingProviderId) {
@@ -372,7 +375,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 					providerKind: provider.kind,
 					baseURL: provider.config.baseURL || "",
 					apiKey: provider.config.apiKey || "",
-					tokensPerSecond: provider.config.tokensPerSecond || 10,
+					tokensPerSecond: provider.config.tokensPerSecond ?? 10,
 				},
 				{ keepDirty: false, keepTouched: false },
 			);
@@ -562,8 +565,15 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						description="Speed of token generation"
 						min={1}
 						max={100}
-						value={watch("tokensPerSecond")}
+						value={watch("tokensPerSecond") ?? ""}
 						onChange={(value) => {
+							if (value === "" || value === null) {
+								setValue("tokensPerSecond", null, {
+									shouldDirty: true,
+									shouldTouch: true,
+								});
+								return;
+							}
 							setValue("tokensPerSecond", Number(value), {
 								shouldDirty: true,
 								shouldTouch: true,
