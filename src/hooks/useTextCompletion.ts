@@ -7,6 +7,7 @@ import {
 	buildCompletionLogprobOptions,
 	parseCompletionLogprobsChunk,
 } from "../ai/openaiLogprobs";
+import { processFullStream } from "../ai/streamUtils";
 import type {
 	CompletionProviderReady,
 	TokenAlternative,
@@ -55,28 +56,19 @@ export const useTextCompletion = ({
 						OPENAI_COMPATIBLE_PROVIDER_NAME,
 					),
 				});
-				for await (const part of stream.fullStream) {
-					if (part.type === "text-delta" && part.text) {
-						setTextContent((draft) => draft + part.text);
-					}
-					if (part.type === "raw") {
-						const chunk = parseCompletionLogprobsChunk(part.rawValue);
-						if (chunk?.tokenLogprobs?.length) {
+				await processFullStream(stream.fullStream, {
+					append: (delta) => {
+						if (delta.content) {
+							setTextContent((draft) => draft + delta.content!);
+						}
+						if (delta.tokenLogprobs?.length) {
 							setTokenLogprobs((draft) => {
-								draft.push(...chunk.tokenLogprobs!);
+								draft.push(...delta.tokenLogprobs!);
 							});
 						}
-					}
-					if (part.type === "error") {
-						throw new Error(
-							typeof part.error === "string"
-								? part.error
-								: part.error instanceof Error
-									? part.error.message
-									: "Failed to stream completion",
-						);
-					}
-				}
+					},
+					parseRawChunk: parseCompletionLogprobsChunk,
+				});
 			} catch (error) {
 				if (abortController.signal.aborted) {
 					return;
