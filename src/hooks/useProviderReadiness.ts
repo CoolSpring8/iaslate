@@ -17,6 +17,7 @@ interface UseProviderReadinessOptions {
 	getBuiltInChatModel: () => LanguageModel;
 	baseURL: string;
 	apiKey: string;
+	tokensPerSecond?: number;
 }
 
 export const useProviderReadiness = ({
@@ -27,8 +28,20 @@ export const useProviderReadiness = ({
 	getBuiltInChatModel,
 	baseURL,
 	apiKey,
+	tokensPerSecond,
 }: UseProviderReadinessOptions) => {
 	const ensureChatReady = useCallback((): ChatProviderReady | null => {
+		if (providerKind === "dummy") {
+			if (!activeModel) {
+				toast.error("Select a model before sending");
+				return null;
+			}
+			return {
+				kind: "dummy",
+				modelId: activeModel,
+				tokensPerSecond: tokensPerSecond ?? 10,
+			};
+		}
 		if (providerKind === "openai-compatible") {
 			if (!activeModel) {
 				toast.error("Select a model before sending");

@@ -89,6 +89,7 @@ const App = () => {
 		getBuiltInChatModel,
 		baseURL: activeProvider?.config.baseURL ?? "",
 		apiKey: activeProvider?.config.apiKey ?? "",
+		tokensPerSecond: activeProvider?.config.tokensPerSecond,
 	});
 
 	const {
@@ -194,9 +195,11 @@ const App = () => {
 						models={models}
 						activeModel={activeModel}
 						onModelChange={setActiveModel}
-						modelSelectorDisabled={providerKind !== "openai-compatible"}
+						modelSelectorDisabled={
+							providerKind !== "openai-compatible" && providerKind !== "dummy"
+						}
 						modelPlaceholder={
-							providerKind === "openai-compatible"
+							providerKind === "openai-compatible" || providerKind === "dummy"
 								? "Select a model"
 								: "Built-in AI (no model list)"
 						}

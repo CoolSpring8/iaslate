@@ -217,8 +217,49 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 				return [];
 			}
 
-			if (!force && activeProvider.kind !== "openai-compatible") {
+			if (
+				!force &&
+				activeProvider.kind !== "openai-compatible" &&
+				activeProvider.kind !== "dummy"
+			) {
 				return [];
+			}
+
+			if (activeProvider.kind === "dummy") {
+				try {
+					const { fetchDummyModels } = await import("../ai/dummyProvider");
+					const fetchedModels = await fetchDummyModels();
+					const currentModel = activeProvider.activeModelId;
+					const currentModelStillValid = fetchedModels.some(
+						(model) => model.id === currentModel,
+					);
+					const nextModelId =
+						(currentModelStillValid && currentModel) ||
+						fetchedModels.at(0)?.id ||
+						null;
+					const updatedProviders = providers.map((provider) =>
+						provider.id === activeProviderId
+							? {
+									...provider,
+									models: fetchedModels,
+									activeModelId: nextModelId,
+								}
+							: provider,
+					);
+
+					set({ providers: updatedProviders });
+					await persistSettings({ providers: updatedProviders });
+					if (!silent) {
+						toast.success("Synced models");
+					}
+					return fetchedModels;
+				} catch (error) {
+					console.error(error);
+					if (!silent) {
+						toast.error("Failed to fetch dummy models");
+					}
+					return [];
+				}
 			}
 
 			const targetBaseURL = activeProvider.config.baseURL?.trim();

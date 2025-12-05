@@ -128,6 +128,24 @@ export const sendMessage = async (
 				append: (delta) => appendToNode(assistantId, delta),
 			});
 			setNodeStatus(assistantId, "final");
+			setNodeStatus(assistantId, "final");
+		} else if (provider.kind === "dummy") {
+			const { createDummyProvider } = await import("./dummyProvider");
+			const dummyProvider = createDummyProvider({
+				tokensPerSecond: provider.tokensPerSecond,
+			});
+			const stream = streamText({
+				model: dummyProvider.chatModel(provider.modelId),
+				messages: filteredContext.map((m) => ({
+					role: m.role as "system" | "user" | "assistant",
+					content: m.content,
+				})) as ModelMessage[],
+				abortSignal: abortController.signal,
+			});
+			await processFullStream(stream.fullStream, {
+				append: (delta) => appendToNode(assistantId, delta),
+			});
+			setNodeStatus(assistantId, "final");
 		} else {
 			const modelMessages = toModelMessages(filteredContext);
 			const stream = streamText({
