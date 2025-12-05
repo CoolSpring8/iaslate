@@ -75,6 +75,7 @@ export const useProviderReadiness = ({
 		baseURL,
 		openAIProvider,
 		providerKind,
+		tokensPerSecond,
 	]);
 
 	const ensureCompletionReady =
