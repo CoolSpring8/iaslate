@@ -12,6 +12,7 @@ import {
 	parseChatLogprobsChunk,
 	toModelMessages,
 } from "./openaiLogprobs";
+import { processFullStream } from "./streamUtils";
 
 export interface SendMessageContext {
 	provider: ChatProviderReady;
@@ -74,34 +75,23 @@ export const sendMessage = async (
 
 	const currentContext = compilePathTo(resolvedParentId);
 	const lastMessage = currentContext[currentContext.length - 1];
-	const isTextOnly =
-		typeof promptContent === "string" ||
-		(Array.isArray(promptContent) &&
-			promptContent.every((p) => p.type === "text"));
-	const shouldAppendToAssistant =
-		lastMessage?.role === "assistant" && isTextOnly;
 
 	let assistantId: string;
 
-	if (shouldAppendToAssistant) {
+	if (hasContent) {
+		resolvedParentId = createUserAfter(resolvedParentId, promptContent);
+		assistantId = createAssistantAfter(resolvedParentId);
+	} else if (lastMessage?.role === "assistant") {
 		assistantId = lastMessage._metadata.uuid;
-		if (hasContent) {
-			const text =
-				typeof promptContent === "string"
-					? promptContent
-					: promptContent.map((p) => p.text).join("\n\n");
-			appendToNode(assistantId, { content: text });
-		}
 	} else {
-		if (hasContent) {
-			resolvedParentId = createUserAfter(resolvedParentId, promptContent);
-		}
 		assistantId = createAssistantAfter(resolvedParentId);
 	}
 
 	const contextMessages = compilePathTo(assistantId);
 	const shouldPrefixAssistant =
-		provider.kind === "built-in" && shouldAppendToAssistant;
+		provider.kind === "built-in" &&
+		lastMessage?.role === "assistant" &&
+		lastMessage._metadata.uuid === assistantId;
 
 	setNodeStatus(assistantId, "streaming");
 	setActiveTarget(assistantId);
@@ -134,18 +124,9 @@ export const sendMessage = async (
 				temperature: 0.3,
 				abortSignal: abortController.signal,
 			});
-			for await (const part of stream.fullStream) {
-				if (part.type === "text-delta" && part.text) {
-					appendToNode(assistantId, {
-						content: part.text,
-					});
-				}
-				if (part.type === "reasoning-delta" && part.text) {
-					appendToNode(assistantId, {
-						reasoning: part.text,
-					});
-				}
-			}
+			await processFullStream(stream.fullStream, {
+				append: (delta) => appendToNode(assistantId, delta),
+			});
 			setNodeStatus(assistantId, "final");
 		} else {
 			const modelMessages = toModelMessages(filteredContext);
@@ -159,35 +140,10 @@ export const sendMessage = async (
 					OPENAI_COMPATIBLE_PROVIDER_NAME,
 				),
 			});
-			for await (const part of stream.fullStream) {
-				if (part.type === "text-delta" && part.text) {
-					appendToNode(assistantId, {
-						content: part.text,
-					});
-				}
-				if (part.type === "reasoning-delta" && part.text) {
-					appendToNode(assistantId, {
-						reasoning: part.text,
-					});
-				}
-				if (part.type === "raw") {
-					const chunk = parseChatLogprobsChunk(part.rawValue);
-					if (chunk?.tokenLogprobs?.length) {
-						appendToNode(assistantId, {
-							tokenLogprobs: chunk.tokenLogprobs,
-						});
-					}
-				}
-				if (part.type === "error") {
-					throw new Error(
-						typeof part.error === "string"
-							? part.error
-							: part.error instanceof Error
-								? part.error.message
-								: "Failed to stream response",
-					);
-				}
-			}
+			await processFullStream(stream.fullStream, {
+				append: (delta) => appendToNode(assistantId, delta),
+				parseRawChunk: parseChatLogprobsChunk,
+			});
 			setNodeStatus(assistantId, "final");
 		}
 	} catch (error) {

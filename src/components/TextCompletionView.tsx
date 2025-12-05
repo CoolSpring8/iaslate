@@ -106,11 +106,11 @@ const TextCompletionView = ({
 					<div className="relative min-h-full">
 						{/* Overlay Layer (Relative, dictates height) */}
 						<div
-							className="min-h-[18rem] w-full whitespace-pre-wrap p-3 font-sans text-base leading-8 text-[#374151] dark:text-slate-100"
+							className="min-h-[18rem] w-full whitespace-pre-wrap p-3 font-sans text-base leading-8 text-slate-700 dark:text-slate-100"
 							aria-hidden="true"
 						>
 							{prefixText.length > 0 && (
-								<span className="text-[#374151] dark:text-slate-100">
+								<span className="text-slate-700 dark:text-slate-100">
 									{prefixText}
 								</span>
 							)}
@@ -128,7 +128,7 @@ const TextCompletionView = ({
 									hoveredIndex={hoveredIndex}
 								/>
 							) : (
-								<span className="text-[#374151] dark:text-slate-100">
+								<span className="text-slate-700 dark:text-slate-100">
 									{generatedTail}
 								</span>
 							)}

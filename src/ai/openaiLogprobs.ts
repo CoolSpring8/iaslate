@@ -157,37 +157,154 @@ export const toModelMessages = (
 	return normalized;
 };
 
+type TopLogprobs =
+	| Array<{ token: string; logprob: number }>
+	| Record<string, number>;
+
+type ContentLogprobEntry = {
+	token?: string;
+	top_logprobs?: TopLogprobs;
+};
+
+type ChatLogprobChoice = {
+	delta?: {
+		content?: string | null;
+		reasoning_content?: string | string[] | null;
+	};
+	logprobs?: {
+		content?: ContentLogprobEntry[];
+		top_logprobs?: TopLogprobs[];
+	};
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null;
+
+const isTopLogprobs = (value: unknown): value is TopLogprobs => {
+	if (Array.isArray(value)) {
+		return value.every(
+			(entry) =>
+				isRecord(entry) &&
+				typeof entry["token"] === "string" &&
+				typeof entry["logprob"] === "number",
+		);
+	}
+	if (!isRecord(value)) {
+		return false;
+	}
+	return Object.values(value).every((entry) => typeof entry === "number");
+};
+
+const toContentLogprobEntries = (
+	value: unknown,
+): ContentLogprobEntry[] | undefined => {
+	if (!Array.isArray(value)) {
+		return undefined;
+	}
+	const entries: ContentLogprobEntry[] = [];
+	for (const entry of value) {
+		if (!isRecord(entry)) {
+			continue;
+		}
+		const topLogprobs = isTopLogprobs(entry["top_logprobs"])
+			? entry["top_logprobs"]
+			: undefined;
+		const token =
+			typeof entry["token"] === "string" ? entry["token"] : undefined;
+		if (token === undefined && !topLogprobs) {
+			continue;
+		}
+		entries.push({
+			token,
+			top_logprobs: topLogprobs,
+		});
+	}
+	return entries.length > 0 ? entries : undefined;
+};
+
+const toTopLogprobList = (value: unknown): TopLogprobs[] | undefined => {
+	if (!Array.isArray(value)) {
+		return undefined;
+	}
+	const entries: TopLogprobs[] = [];
+	for (const entry of value) {
+		if (isTopLogprobs(entry)) {
+			entries.push(entry);
+		}
+	}
+	return entries.length > 0 ? entries : undefined;
+};
+
+const toChatChoice = (raw: unknown): ChatLogprobChoice | undefined => {
+	if (!isRecord(raw)) {
+		return undefined;
+	}
+	const choices = raw["choices"];
+	if (!Array.isArray(choices) || choices.length === 0) {
+		return undefined;
+	}
+	const choice = choices[0];
+	if (!isRecord(choice)) {
+		return undefined;
+	}
+	const delta = isRecord(choice["delta"]) ? choice["delta"] : undefined;
+	const reasoningContent = delta?.["reasoning_content"];
+	const logprobs = isRecord(choice["logprobs"])
+		? choice["logprobs"]
+		: undefined;
+	const contentEntries = toContentLogprobEntries(logprobs?.["content"]);
+	const topLogprobs = toTopLogprobList(logprobs?.["top_logprobs"]);
+	const deltaContent =
+		typeof delta?.["content"] === "string"
+			? delta["content"]
+			: delta?.["content"] === null
+				? null
+				: undefined;
+	const deltaReasoning =
+		typeof reasoningContent === "string"
+			? reasoningContent
+			: Array.isArray(reasoningContent) &&
+					reasoningContent.every((entry) => typeof entry === "string")
+				? reasoningContent
+				: reasoningContent === null
+					? null
+					: undefined;
+
+	if (!delta && !contentEntries && !topLogprobs) {
+		return undefined;
+	}
+
+	return {
+		delta:
+			deltaContent !== undefined || deltaReasoning !== undefined
+				? {
+						content: deltaContent,
+						reasoning_content: deltaReasoning,
+					}
+				: undefined,
+		logprobs:
+			contentEntries || topLogprobs
+				? {
+						content: contentEntries,
+						top_logprobs: topLogprobs,
+					}
+				: undefined,
+	};
+};
+
 export const parseChatLogprobsChunk = (
 	raw: unknown,
 ): StreamChunk | undefined => {
-	const choice = (raw as { choices?: unknown[] })?.choices?.[0] as
-		| {
-				delta?: {
-					content?: string | null;
-					reasoning_content?: string | string[] | null;
-				};
-				logprobs?: {
-					content?: Array<{
-						token?: string;
-						top_logprobs?:
-							| Array<{ token: string; logprob: number }>
-							| Record<string, number>;
-					}>;
-					top_logprobs?: Array<
-						Array<{ token: string; logprob: number }> | Record<string, number>
-					>;
-				};
-		  }
-		| undefined;
+	const choice = toChatChoice(raw);
 	if (!choice) {
 		return undefined;
 	}
-	const delta = choice.delta ?? {};
+	const delta = choice.delta;
 	const logprobs = choice.logprobs;
 	const reasoningChunk =
-		typeof delta.reasoning_content === "string"
+		typeof delta?.reasoning_content === "string"
 			? delta.reasoning_content
-			: Array.isArray(delta.reasoning_content)
+			: Array.isArray(delta?.reasoning_content)
 				? delta.reasoning_content.join("")
 				: undefined;
 	const segment: "content" | "reasoning" =
@@ -216,7 +333,7 @@ export const parseChatLogprobsChunk = (
 			const chunkText =
 				segment === "reasoning"
 					? reasoningChunk ?? tokenLogprobs.map((entry) => entry.token).join("")
-					: typeof delta.content === "string"
+					: typeof delta?.content === "string"
 						? delta.content
 						: undefined;
 			return {
@@ -240,9 +357,9 @@ export const parseChatLogprobsChunk = (
 		text:
 			segment === "reasoning"
 				? reasoningChunk
-				: delta.content === null
+				: delta?.content === null
 					? undefined
-					: typeof delta.content === "string"
+					: typeof delta?.content === "string"
 						? delta.content
 						: undefined,
 		topLogprobs: fallback,

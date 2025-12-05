@@ -9,6 +9,7 @@ import {
 	toModelMessages,
 } from "../ai/openaiLogprobs";
 import { sendMessage } from "../ai/sendMessage";
+import { processFullStream } from "../ai/streamUtils";
 import { useConversationTree } from "../tree/useConversationTree";
 import type {
 	ChatProviderReady,
@@ -439,33 +440,10 @@ export const useConversationController = ({
 							OPENAI_COMPATIBLE_PROVIDER_NAME,
 						),
 					});
-					for await (const part of stream.fullStream) {
-						if (part.type === "text-delta" && part.text) {
-							appendToNode(assistantId, {
-								content: part.text,
-							});
-						}
-						if (part.type === "reasoning-delta" && part.text) {
-							appendToNode(assistantId, { reasoning: part.text });
-						}
-						if (part.type === "raw") {
-							const chunk = parseChatLogprobsChunk(part.rawValue);
-							if (chunk?.tokenLogprobs?.length) {
-								appendToNode(assistantId, {
-									tokenLogprobs: chunk.tokenLogprobs,
-								});
-							}
-						}
-						if (part.type === "error") {
-							throw new Error(
-								typeof part.error === "string"
-									? part.error
-									: part.error instanceof Error
-										? part.error.message
-										: "Failed to stream response",
-							);
-						}
-					}
+					await processFullStream(stream.fullStream, {
+						append: (delta) => appendToNode(assistantId, delta),
+						parseRawChunk: parseChatLogprobsChunk,
+					});
 					setNodeStatus(assistantId, "final");
 				} catch (error) {
 					if (abortController.signal.aborted) {

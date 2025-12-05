@@ -97,6 +97,8 @@ export const useTextCompletion = ({
 		if (isGenerating) {
 			return;
 		}
+		// If the user only appended text to the existing seed, we can keep previously
+		// streamed token probabilities and continue generation instead of restarting.
 		const canReuseTokens =
 			seedRef.current.length > 0 &&
 			textContent.startsWith(seedRef.current) &&
