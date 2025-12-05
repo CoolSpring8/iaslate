@@ -94,7 +94,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		null,
 	);
 
-	const { register, handleSubmit, reset, watch, setValue, formState } =
+	const { register, handleSubmit, reset, watch, setValue } =
 		useForm<SettingsFormValues>({
 			mode: "onBlur",
 			reValidateMode: "onBlur",
@@ -106,7 +106,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				tokensPerSecond: 10,
 			},
 		});
-	const { isDirty, isSubmitting } = formState;
 
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 	const selectedProvider = watch("providerKind");
@@ -359,13 +358,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		[addProvider, editingProviderId, reset, updateProvider],
 	);
 
-	const handleAutoSubmit = useCallback(() => {
-		if (!isDirty || isSubmitting) {
-			return;
-		}
-		void handleSubmit(handleSaveProvider)();
-	}, [handleSaveProvider, handleSubmit, isDirty, isSubmitting]);
-
 	const startEditing = (providerId: string) => {
 		const provider = providers.find((p) => p.id === providerId);
 		if (provider) {
@@ -508,7 +500,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							});
 						}
 					}}
-					onBlur={handleAutoSubmit}
 					withAsterisk
 				/>
 				{selectedProvider === "openai-compatible" ? (
@@ -519,7 +510,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							type="url"
 							{...register("baseURL", {
 								required: selectedProvider === "openai-compatible",
-								onBlur: handleAutoSubmit,
 							})}
 						/>
 						<PasswordInput
@@ -527,7 +517,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							placeholder="sk-..."
 							{...register("apiKey", {
 								required: false,
-								onBlur: handleAutoSubmit,
 							})}
 						/>
 					</>
@@ -579,7 +568,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 								shouldDirty: true,
 								shouldTouch: true,
 							});
-							handleAutoSubmit();
 						}}
 					/>
 				)}
@@ -607,7 +595,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						placeholder="My Provider"
 						{...register("name", {
 							required: false,
-							onBlur: handleAutoSubmit,
 							onChange: () => setIsNameManuallySet(true),
 						})}
 					/>
