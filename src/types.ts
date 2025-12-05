@@ -4,6 +4,7 @@ export type AppView = "chat" | "diagram" | "text";
 
 export interface MessageMetadata {
 	uuid: string;
+	tokenLogprobs?: TokenLogprob[];
 }
 
 export type MessageContentPart =
@@ -17,6 +18,18 @@ export interface Message {
 	content: MessageContent;
 	reasoning_content?: string;
 	_metadata: MessageMetadata;
+}
+
+export interface TokenLogprob {
+	token: string;
+	probability?: number;
+	segment?: "content" | "reasoning";
+	alternatives: TokenAlternative[];
+}
+
+export interface TokenAlternative {
+	token: string;
+	probability: number;
 }
 
 export interface ModelInfo {
@@ -57,6 +70,8 @@ export type ChatProviderReady =
 			kind: "openai-compatible";
 			modelId: string;
 			openAIProvider: OpenAIProviderAdapter;
+			baseURL: string;
+			apiKey: string;
 	  }
 	| {
 			kind: "built-in";

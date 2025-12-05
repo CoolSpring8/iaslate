@@ -1,6 +1,8 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { ModelInfo } from "../types";
 
+export const OPENAI_COMPATIBLE_PROVIDER_NAME = "user-openai-compatible";
+
 const normalizeBaseURL = (baseURL: string) =>
 	baseURL.trim().replace(/\/+$/, "");
 
@@ -17,7 +19,7 @@ export const buildOpenAICompatibleProvider = ({
 	}
 	return createOpenAICompatible({
 		baseURL: normalizedBaseURL,
-		name: "user-openai-compatible",
+		name: OPENAI_COMPATIBLE_PROVIDER_NAME,
 		apiKey: apiKey || "_PLACEHOLDER_",
 	});
 };

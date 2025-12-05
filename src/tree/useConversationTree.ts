@@ -1,6 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
 import { createWithEqualityFn } from "zustand/traditional";
-import type { Message, MessageContent, MessageContentPart } from "../types";
+import type {
+	Message,
+	MessageContent,
+	MessageContentPart,
+	TokenLogprob,
+} from "../types";
 import type {
 	ConversationSnapshot,
 	ConversationTree,
@@ -29,9 +34,17 @@ interface TreeState extends ConversationTree {
 	createAssistantAfter: (parentId: NodeID) => NodeID;
 	appendToNode: (
 		nodeId: NodeID,
-		delta: { content?: string; reasoning?: string },
+		delta: {
+			content?: string;
+			reasoning?: string;
+			tokenLogprobs?: TokenLogprob[];
+		},
 	) => void;
-	setNodeText: (nodeId: NodeID, text: string) => void;
+	setNodeText: (
+		nodeId: NodeID,
+		text: string,
+		tokenLogprobs?: TokenLogprob[],
+	) => void;
 	setNodeStatus: (
 		nodeId: NodeID,
 		status: "draft" | "streaming" | "final" | "error",
@@ -42,7 +55,11 @@ interface TreeState extends ConversationTree {
 	cloneNode: (sourceId: NodeID) => NodeID | undefined;
 	replaceNodeWithEditedClone: (
 		nodeId: NodeID,
-		updates: { content?: MessageContent; reasoningContent?: string },
+		updates: {
+			content?: MessageContent;
+			reasoningContent?: string;
+			tokenLogprobs?: TokenLogprob[];
+		},
 	) => NodeID | undefined;
 	removeNode: (id: NodeID) => void;
 	reset: () => void;
@@ -150,7 +167,14 @@ const toMessage = (node: TreeNode): Message => ({
 	role: node.role,
 	content: node.content,
 	reasoning_content: node.reasoningContent,
-	_metadata: { uuid: node.id },
+	_metadata: {
+		uuid: node.id,
+		...(node.tokenLogprobs
+			? {
+					tokenLogprobs: node.tokenLogprobs,
+				}
+			: {}),
+	},
 });
 
 const appendTextToContent = (
@@ -223,6 +247,8 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 						createdAt: existing?.createdAt ?? Date.now(),
 						status: existing?.status,
 						parentId,
+						tokenLogprobs:
+							message._metadata.tokenLogprobs ?? existing?.tokenLogprobs,
 					} satisfies TreeNode;
 					parentId = id;
 				}
@@ -346,17 +372,22 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					typeof delta.reasoning === "string"
 						? `${node.reasoningContent ?? ""}${delta.reasoning}`
 						: node.reasoningContent;
+				const nextTokenLogprobs =
+					delta.tokenLogprobs && delta.tokenLogprobs.length > 0
+						? [...(node.tokenLogprobs ?? []), ...delta.tokenLogprobs]
+						: node.tokenLogprobs;
 				const nodes: NodeMap = {
 					...state.nodes,
 					[nodeId]: {
 						...node,
 						content: nextContent,
 						reasoningContent: nextReasoning,
+						tokenLogprobs: nextTokenLogprobs,
 					},
 				};
 				return { nodes } satisfies Partial<TreeState>;
 			}),
-		setNodeText: (nodeId, text) =>
+		setNodeText: (nodeId, text, tokenLogprobs) =>
 			set((state) => {
 				const node = state.nodes[nodeId];
 				if (!node) {
@@ -367,6 +398,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					[nodeId]: {
 						...node,
 						content: text,
+						tokenLogprobs,
 					},
 				};
 				return { nodes } satisfies Partial<TreeState>;
@@ -431,6 +463,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 						createdAt: Date.now(),
 						parentId: source.parentId ?? null,
 						status: source.status,
+						tokenLogprobs: source.tokenLogprobs,
 					},
 				};
 				return withDerivedTree(nodes);
@@ -452,6 +485,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					id: newId,
 					content: updates.content ?? target.content,
 					reasoningContent: updates.reasoningContent ?? target.reasoningContent,
+					tokenLogprobs: updates.tokenLogprobs ?? target.tokenLogprobs,
 					parentId: target.parentId ?? null,
 					createdAt: Date.now(),
 					status: "final",
@@ -542,6 +576,7 @@ export const useConversationTree = createWithEqualityFn<TreeState>(
 					createdAt,
 					status: node.status,
 					parentId,
+					tokenLogprobs: node.tokenLogprobs,
 				} satisfies TreeNode;
 			}
 			set(

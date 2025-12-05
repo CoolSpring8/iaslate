@@ -1,4 +1,4 @@
-import type { MessageContent } from "../types";
+import type { MessageContent, TokenLogprob } from "../types";
 
 export type NodeID = string;
 export type EdgeID = string;
@@ -12,6 +12,7 @@ export interface TreeNode {
 	createdAt: number;
 	status?: "draft" | "streaming" | "final" | "error";
 	parentId: NodeID | null;
+	tokenLogprobs?: TokenLogprob[];
 }
 
 export interface TreeEdge {

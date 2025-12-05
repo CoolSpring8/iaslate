@@ -15,6 +15,8 @@ interface UseProviderReadinessOptions {
 	activeModel: string | null;
 	openAIProvider: OpenAIProviderAdapter | null;
 	getBuiltInChatModel: () => LanguageModel;
+	baseURL: string;
+	apiKey: string;
 }
 
 export const useProviderReadiness = ({
@@ -23,6 +25,8 @@ export const useProviderReadiness = ({
 	activeModel,
 	openAIProvider,
 	getBuiltInChatModel,
+	baseURL,
+	apiKey,
 }: UseProviderReadinessOptions) => {
 	const ensureChatReady = useCallback((): ChatProviderReady | null => {
 		if (providerKind === "openai-compatible") {
@@ -38,6 +42,8 @@ export const useProviderReadiness = ({
 				kind: "openai-compatible",
 				modelId: activeModel,
 				openAIProvider,
+				baseURL,
+				apiKey,
 			};
 		}
 		if (builtInAvailability !== "available") {
@@ -52,6 +58,8 @@ export const useProviderReadiness = ({
 		activeModel,
 		builtInAvailability,
 		getBuiltInChatModel,
+		apiKey,
+		baseURL,
 		openAIProvider,
 		providerKind,
 	]);
@@ -74,8 +82,10 @@ export const useProviderReadiness = ({
 				kind: "openai-compatible",
 				modelId: activeModel,
 				openAIProvider,
+				baseURL,
+				apiKey,
 			};
-		}, [activeModel, openAIProvider, providerKind]);
+		}, [activeModel, apiKey, baseURL, openAIProvider, providerKind]);
 
 	return { ensureChatReady, ensureCompletionReady };
 };

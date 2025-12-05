@@ -13,6 +13,7 @@
 		"@ai-sdk/react": "^2.0.98",
 		"@base-ui-components/react": "^1.0.0-beta.4",
 		"@built-in-ai/core": "^2.0.1",
+		"@floating-ui/react": "^0.27.16",
 		"@mantine/core": "^7.8.1",
 		"@mantine/hooks": "^7.8.1",
 		"@xyflow/react": "^12.9.1",

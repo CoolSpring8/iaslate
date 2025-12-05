@@ -4,7 +4,12 @@ import type { ClipboardEvent } from "react";
 import { toast } from "sonner";
 import { twJoin } from "tailwind-merge";
 import { useImmer } from "use-immer";
-import type { Message, MessageContent, MessageContentPart } from "../types";
+import type {
+	Message,
+	MessageContent,
+	MessageContentPart,
+	TokenAlternative,
+} from "../types";
 import MessageItem from "./MessageItem";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -25,6 +30,11 @@ interface ChatViewProps {
 	onEditCancel: () => void;
 	onPromptDirtyChange?: (dirty: boolean) => void;
 	resetSignal?: number;
+	onTokenReroll?: (
+		messageId: string,
+		tokenIndex: number,
+		alternative: TokenAlternative,
+	) => Promise<string | void> | string | void;
 }
 
 const ChatView = ({
@@ -40,9 +50,13 @@ const ChatView = ({
 	onEditCancel,
 	onPromptDirtyChange,
 	resetSignal,
+	onTokenReroll,
 }: ChatViewProps) => {
 	const [prompt, setPrompt] = useImmer("");
 	const [attachments, setAttachments] = useImmer<MessageContentPart[]>([]);
+	const [tokenViewStates, setTokenViewStates] = useImmer<
+		Record<string, boolean>
+	>({});
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const isComposing = useRef(false);
 
@@ -88,6 +102,17 @@ const ChatView = ({
 	}, [resetSignal, setAttachments, setPrompt]);
 
 	useEffect(() => {
+		setTokenViewStates((draft) => {
+			const ids = new Set(messages.map((message) => message._metadata.uuid));
+			for (const key of Object.keys(draft)) {
+				if (!ids.has(key)) {
+					delete draft[key];
+				}
+			}
+		});
+	}, [messages, setTokenViewStates]);
+
+	useEffect(() => {
 		if (editingMessageId && editingMessage) {
 			const { text, images } = splitContent(editingMessage.content);
 			setPrompt(text);
@@ -100,6 +125,31 @@ const ChatView = ({
 		setPrompt,
 		splitContent,
 	]);
+
+	const handleTokenViewChange = useCallback(
+		(messageId: string, next: boolean) => {
+			setTokenViewStates((draft) => {
+				draft[messageId] = next;
+			});
+		},
+		[setTokenViewStates],
+	);
+
+	const handleTokenReroll = useCallback(
+		async (
+			messageId: string,
+			tokenIndex: number,
+			alternative: TokenAlternative,
+		) => {
+			const nextId = await onTokenReroll?.(messageId, tokenIndex, alternative);
+			if (nextId) {
+				setTokenViewStates((draft) => {
+					draft[nextId] = true;
+				});
+			}
+		},
+		[onTokenReroll, setTokenViewStates],
+	);
 
 	const buildMessageContent = useCallback((): MessageContent => {
 		const parts: MessageContentPart[] = [];
@@ -223,9 +273,25 @@ const ChatView = ({
 						isEditing={editingMessageId === message._metadata.uuid}
 						isLast={index === messages.length - 1}
 						isGenerating={isGenerating}
+						showTokens={tokenViewStates[message._metadata.uuid] ?? false}
 						onEdit={() => onEditStart(message._metadata.uuid)}
 						onDelete={() => onDeleteMessage(message._metadata.uuid)}
 						onDetach={() => onDetachMessage(message._metadata.uuid)}
+						tokenLogprobs={message._metadata.tokenLogprobs}
+						onShowTokensChange={(show) =>
+							handleTokenViewChange(message._metadata.uuid, show)
+						}
+						onRerollToken={
+							onTokenReroll
+								? (index, alternative) =>
+										handleTokenReroll(
+											message._metadata.uuid,
+											index,
+											alternative,
+										)
+								: undefined
+						}
+						disableReroll={!onTokenReroll}
 					/>
 				))}
 			</div>
