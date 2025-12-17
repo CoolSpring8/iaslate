@@ -29,7 +29,7 @@ export const useTextCompletion = ({
 	const seedRef = useRef("");
 
 	const runGeneration = useCallback(
-		async (seedText: string, updateSeed = true) => {
+		async (seedText: string, updateSeed = true, startTokenIndex = 0) => {
 			const hasActiveGeneration =
 				abortControllerRef.current &&
 				abortControllerRef.current.signal.aborted === false;
@@ -45,6 +45,8 @@ export const useTextCompletion = ({
 			if (updateSeed) {
 				seedRef.current = seedText;
 			}
+			const logprobSeed = seedRef.current;
+			let tokenIndex = startTokenIndex;
 			setIsGenerating(true);
 			try {
 				if (readiness.kind === "dummy") {
@@ -62,7 +64,9 @@ export const useTextCompletion = ({
 							const tokenLogprob = generateFakeLogprobs(
 								part.text,
 								readiness.modelId,
+								{ seed: logprobSeed, tokenIndex },
 							);
+							tokenIndex += 1;
 							setTextContent((draft) => draft + part.text);
 							setTokenLogprobs((draft) => {
 								draft.push(tokenLogprob);
@@ -156,11 +160,11 @@ export const useTextCompletion = ({
 				return draft;
 			});
 			// Keep existing probabilities: generate more without moving tokens into the seed.
-			await runGeneration(textContent, false);
+			await runGeneration(textContent, false, validTokenCount);
 		} else {
 			// Edits introduced a gap; treat the current text as the new seed.
 			setTokenLogprobs([]);
-			await runGeneration(textContent, true);
+			await runGeneration(textContent, true, 0);
 		}
 	}, [
 		isGenerating,
@@ -207,7 +211,7 @@ export const useTextCompletion = ({
 				replacement.token;
 			setTextContent(newSeed);
 			setTokenLogprobs([...prefixTokens, newTokenEntry]);
-			await runGeneration(newSeed, false);
+			await runGeneration(newSeed, false, prefixTokens.length + 1);
 		},
 		[
 			cancel,

@@ -50,6 +50,25 @@ const hasMessageContent = (content: MessageContent) => {
 	);
 };
 
+const toTextSeed = (content: MessageContent) =>
+	typeof content === "string"
+		? content
+		: content
+				.filter((part) => part.type === "text")
+				.map((part) => part.text)
+				.join(" ")
+				.trim();
+
+const extractLatestUserSeed = (messages: Message[]) => {
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (message?.role === "user") {
+			return toTextSeed(message.content);
+		}
+	}
+	return "";
+};
+
 export const sendMessage = async (
 	promptContent: MessageContent,
 	{
@@ -133,6 +152,9 @@ export const sendMessage = async (
 			const dummyProvider = createDummyProvider({
 				tokensPerSecond: provider.tokensPerSecond,
 			});
+			const logprobSeed = extractLatestUserSeed(filteredContext);
+			let tokenIndex =
+				contextMessages.at(-1)?._metadata.tokenLogprobs?.length ?? 0;
 			const stream = streamText({
 				model: dummyProvider.chatModel(provider.modelId),
 				messages: filteredContext.map((m) => ({
@@ -147,7 +169,9 @@ export const sendMessage = async (
 					const tokenLogprob = generateFakeLogprobs(
 						part.text,
 						provider.modelId,
+						{ seed: logprobSeed, tokenIndex },
 					);
+					tokenIndex += 1;
 					appendToNode(assistantId, {
 						content: part.text,
 						tokenLogprobs: [tokenLogprob],

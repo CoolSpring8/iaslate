@@ -163,6 +163,25 @@ const MAGIC_8_BALL_ANSWERS = [
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const hashInput = (input: string) => {
+	let hash = 0;
+	for (let index = 0; index < input.length; index += 1) {
+		hash = (hash << 5) - hash + input.charCodeAt(index);
+		hash |= 0;
+	}
+	return Math.abs(hash);
+};
+
+const mix32 = (value: number) => {
+	let x = value | 0;
+	x ^= x >>> 16;
+	x = Math.imul(x, 0x7feb352d);
+	x ^= x >>> 15;
+	x = Math.imul(x, 0x846ca68b);
+	x ^= x >>> 16;
+	return x >>> 0;
+};
+
 const createSeededRng = (seed: number) => {
 	let state = seed || 1;
 	return () => {
@@ -182,6 +201,7 @@ const pickFrom = <T>(items: readonly T[], rng: () => number) =>
 export const generateFakeLogprobs = (
 	token: string,
 	modelId: string,
+	options?: { seed?: string; tokenIndex?: number },
 ): TokenLogprob => {
 	const useVaried = MODELS_WITH_VARIED_LOGPROBS.has(modelId);
 
@@ -195,47 +215,86 @@ export const generateFakeLogprobs = (
 		};
 	}
 
-	// Varied models: generate random probability and alternatives
-	const baseProbability = 0.4 + Math.random() * 0.5; // 0.4-0.9
-	const alternativeCount = 2 + Math.floor(Math.random() * 3); // 2-4 alternatives
+	const rng =
+		typeof options?.seed === "string" && typeof options.tokenIndex === "number"
+			? createSeededRng(
+					mix32(hashInput(`${modelId}:${options.seed}`) ^ options.tokenIndex),
+				)
+			: Math.random;
+
+	// Varied models: generate a more realistic distribution with occasional spikes.
+	// Most tokens are high-confidence, but some are uncertain.
+	const roll = rng();
+	const baseProbability =
+		roll < 0.15
+			? 0.02 + rng() * 0.28 // 2-30%
+			: roll < 0.4
+				? 0.3 + rng() * 0.4 // 30-70%
+				: 0.7 + rng() * 0.29; // 70-99%
+	const alternativeCount = 2 + Math.floor(rng() * 3); // 2-4 alternatives
 
 	// Extract trailing whitespace/punctuation from token to apply to alternatives
 	const trailingMatch = token.match(/(\s+)$/);
 	const trailingWhitespace = trailingMatch ? trailingMatch[1] : "";
 	const tokenCore = token.replace(/\s+$/, "");
 
-	// Pick random alternatives from the pool
-	const shuffled = [...FAKE_ALTERNATIVES_POOL].sort(() => Math.random() - 0.5);
-	const pickedAlternatives = shuffled
-		.slice(0, alternativeCount)
-		.filter((alt) => alt !== tokenCore)
-		.map((alt) => alt + trailingWhitespace); // Add same trailing whitespace
-
-	// Distribute remaining probability among alternatives
-	const remainingProb = 1 - baseProbability;
-	const alternatives = [{ token, probability: baseProbability }];
-
-	let usedProb = 0;
-	for (let i = 0; i < pickedAlternatives.length; i++) {
-		const isLast = i === pickedAlternatives.length - 1;
-		const altProb = isLast
-			? remainingProb - usedProb
-			: (remainingProb / pickedAlternatives.length) * (0.5 + Math.random());
-		usedProb += altProb;
-		alternatives.push({
-			token: pickedAlternatives[i],
-			probability: Math.max(0.01, altProb),
-		});
+	// Pick deterministic alternatives from the pool, excluding the current token.
+	const pool = FAKE_ALTERNATIVES_POOL.filter((alt) => alt !== tokenCore);
+	const pickedAlternatives: string[] = [];
+	for (let index = 0; index < alternativeCount && pool.length > 0; index += 1) {
+		const pickIndex = Math.floor(rng() * pool.length);
+		const picked = pool.splice(pickIndex, 1)[0];
+		if (!picked) {
+			continue;
+		}
+		pickedAlternatives.push(`${picked}${trailingWhitespace}`);
 	}
 
+	// Distribute remaining probability among alternatives.
+	const remainingProb = Math.max(0, 1 - baseProbability);
+	const alternatives = [{ token, probability: baseProbability }];
+	if (pickedAlternatives.length > 0 && remainingProb > 0) {
+		const weights = pickedAlternatives.map(() => 0.05 + rng() ** 2);
+		const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
+		for (let index = 0; index < pickedAlternatives.length; index += 1) {
+			const weight = weights[index];
+			const altProb =
+				weightSum > 0
+					? remainingProb * (weight / weightSum)
+					: remainingProb / pickedAlternatives.length;
+			alternatives.push({
+				token: pickedAlternatives[index]!,
+				probability: altProb,
+			});
+		}
+	} else if (pickedAlternatives.length === 0) {
+		alternatives[0] = { token, probability: 1.0 };
+	}
+
+	const totalProbability = alternatives.reduce(
+		(sum, entry) => sum + entry.probability,
+		0,
+	);
+	const normalizedAlternatives =
+		totalProbability > 0
+			? alternatives.map((entry) => ({
+					...entry,
+					probability: entry.probability / totalProbability,
+				}))
+			: [{ token, probability: 1.0 }];
+
+	const tokenProbability = normalizedAlternatives.find(
+		(entry) => entry.token === token,
+	)?.probability;
+
 	// Sort by probability descending
-	alternatives.sort((a, b) => b.probability - a.probability);
+	normalizedAlternatives.sort((a, b) => b.probability - a.probability);
 
 	return {
 		token,
-		probability: baseProbability,
+		probability: tokenProbability,
 		segment: "content",
-		alternatives,
+		alternatives: normalizedAlternatives,
 	};
 };
 
@@ -284,15 +343,6 @@ const extractSingleUserPromptText = (prompt: LanguageModelV2Prompt) => {
 		.filter((part) => part.type === "text")
 		.map((part) => part.text)
 		.join("");
-};
-
-const hashInput = (input: string) => {
-	let hash = 0;
-	for (let index = 0; index < input.length; index += 1) {
-		hash = (hash << 5) - hash + input.charCodeAt(index);
-		hash |= 0;
-	}
-	return Math.abs(hash);
 };
 
 /**

@@ -27,6 +27,25 @@ interface UseConversationControllerOptions {
 	ensureChatReady: () => ChatProviderReady | null;
 }
 
+const toTextSeed = (content: MessageContent) =>
+	typeof content === "string"
+		? content
+		: content
+				.filter((part) => part.type === "text")
+				.map((part) => part.text)
+				.join(" ")
+				.trim();
+
+const extractLatestUserSeed = (messages: Message[]) => {
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (message?.role === "user") {
+			return toTextSeed(message.content);
+		}
+	}
+	return "";
+};
+
 export const useConversationController = ({
 	defaultSystemPrompt,
 	ensureChatReady,
@@ -436,12 +455,12 @@ export const useConversationController = ({
 						const dummyProvider = createDummyProvider({
 							tokensPerSecond: readiness.tokensPerSecond,
 						});
+						const parentContext = compilePathTo(parentId);
+						const logprobSeed = extractLatestUserSeed(parentContext);
+						let tokenIndex = seedTokens.length;
 						const stream = streamText({
 							model: dummyProvider.chatModel(readiness.modelId),
-							messages: toModelMessages(
-								compilePathTo(parentId),
-								seedText || undefined,
-							),
+							messages: toModelMessages(parentContext, seedText || undefined),
 							abortSignal: abortController.signal,
 						});
 						for await (const part of stream.fullStream) {
@@ -449,7 +468,9 @@ export const useConversationController = ({
 								const tokenLogprob = generateFakeLogprobs(
 									part.text,
 									readiness.modelId,
+									{ seed: logprobSeed, tokenIndex },
 								);
+								tokenIndex += 1;
 								appendToNode(assistantId, {
 									content: part.text,
 									tokenLogprobs: [tokenLogprob],
