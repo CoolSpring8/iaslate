@@ -162,7 +162,6 @@ const MAGIC_8_BALL_ANSWERS = [
 ] as const;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const TOKEN_CHUNK_SIZE = 6;
 
 /**
  * Generate fake logprobs for a text chunk.
@@ -189,11 +188,17 @@ export const generateFakeLogprobs = (
 	const baseProbability = 0.4 + Math.random() * 0.5; // 0.4-0.9
 	const alternativeCount = 2 + Math.floor(Math.random() * 3); // 2-4 alternatives
 
+	// Extract trailing whitespace/punctuation from token to apply to alternatives
+	const trailingMatch = token.match(/(\s+)$/);
+	const trailingWhitespace = trailingMatch ? trailingMatch[1] : "";
+	const tokenCore = token.replace(/\s+$/, "");
+
 	// Pick random alternatives from the pool
 	const shuffled = [...FAKE_ALTERNATIVES_POOL].sort(() => Math.random() - 0.5);
 	const pickedAlternatives = shuffled
 		.slice(0, alternativeCount)
-		.filter((alt) => alt !== token);
+		.filter((alt) => alt !== tokenCore)
+		.map((alt) => alt + trailingWhitespace); // Add same trailing whitespace
 
 	// Distribute remaining probability among alternatives
 	const remainingProb = 1 - baseProbability;
@@ -254,21 +259,21 @@ const hashInput = (input: string) => {
 	return Math.abs(hash);
 };
 
-const chunkText = (text: string, chunkSize = TOKEN_CHUNK_SIZE) => {
+/**
+ * Split text into word-based chunks for more natural tokenization.
+ * Each word (with trailing whitespace) becomes a token.
+ * Punctuation attached to words stays with them.
+ */
+const chunkText = (text: string) => {
 	if (!text) {
 		return [];
 	}
+	// Match words with optional trailing whitespace, or standalone whitespace/punctuation
 	const chunks: string[] = [];
-	let buffer = "";
-	for (const char of text) {
-		buffer += char;
-		if (buffer.length >= chunkSize) {
-			chunks.push(buffer);
-			buffer = "";
-		}
-	}
-	if (buffer) {
-		chunks.push(buffer);
+	const regex = /(\S+\s*|\s+)/g;
+	let match: RegExpExecArray | null;
+	while ((match = regex.exec(text)) !== null) {
+		chunks.push(match[0]);
 	}
 	return chunks;
 };
