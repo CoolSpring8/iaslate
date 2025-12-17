@@ -371,7 +371,10 @@ export const useConversationController = ({
 			if (!readiness) {
 				return undefined;
 			}
-			if (readiness.kind !== "openai-compatible") {
+			if (
+				readiness.kind !== "openai-compatible" &&
+				readiness.kind !== "dummy"
+			) {
 				toast.error("Token rerolls require an OpenAI-compatible provider");
 				return undefined;
 			}
@@ -427,24 +430,65 @@ export const useConversationController = ({
 			void (async () => {
 				try {
 					setIsGenerating(true);
-					const stream = streamText({
-						model: readiness.openAIProvider.chatModel(readiness.modelId),
-						messages: toModelMessages(
-							compilePathTo(parentId),
-							seedText || undefined,
-						),
-						temperature: 0.3,
-						abortSignal: abortController.signal,
-						includeRawChunks: true,
-						providerOptions: buildChatLogprobOptions(
-							OPENAI_COMPATIBLE_PROVIDER_NAME,
-						),
-					});
-					await processFullStream(stream.fullStream, {
-						append: (delta) => appendToNode(assistantId, delta),
-						parseRawChunk: parseChatLogprobsChunk,
-					});
-					setNodeStatus(assistantId, "final");
+					if (readiness.kind === "dummy") {
+						// Dummy provider: use custom streaming with fake logprobs
+						const { createDummyProvider, generateFakeLogprobs } = await import(
+							"../ai/dummyProvider"
+						);
+						const dummyProvider = createDummyProvider({
+							tokensPerSecond: readiness.tokensPerSecond,
+						});
+						const stream = streamText({
+							model: dummyProvider.chatModel(readiness.modelId),
+							messages: toModelMessages(
+								compilePathTo(parentId),
+								seedText || undefined,
+							),
+							abortSignal: abortController.signal,
+						});
+						for await (const part of stream.fullStream) {
+							if (part.type === "text-delta" && part.text) {
+								const tokenLogprob = generateFakeLogprobs(
+									part.text,
+									readiness.modelId,
+								);
+								appendToNode(assistantId, {
+									content: part.text,
+									tokenLogprobs: [tokenLogprob],
+								});
+							}
+							if (part.type === "error") {
+								throw new Error(
+									typeof part.error === "string"
+										? part.error
+										: part.error instanceof Error
+											? part.error.message
+											: "Failed to stream response",
+								);
+							}
+						}
+						setNodeStatus(assistantId, "final");
+					} else {
+						// OpenAI-compatible provider
+						const stream = streamText({
+							model: readiness.openAIProvider.chatModel(readiness.modelId),
+							messages: toModelMessages(
+								compilePathTo(parentId),
+								seedText || undefined,
+							),
+							temperature: 0.3,
+							abortSignal: abortController.signal,
+							includeRawChunks: true,
+							providerOptions: buildChatLogprobOptions(
+								OPENAI_COMPATIBLE_PROVIDER_NAME,
+							),
+						});
+						await processFullStream(stream.fullStream, {
+							append: (delta) => appendToNode(assistantId, delta),
+							parseRawChunk: parseChatLogprobsChunk,
+						});
+						setNodeStatus(assistantId, "final");
+					}
 				} catch (error) {
 					if (abortController.signal.aborted) {
 						setNodeStatus(assistantId, "draft");

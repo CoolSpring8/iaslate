@@ -10,9 +10,53 @@ import type {
 } from "@ai-sdk/provider";
 import { NoSuchModelError } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import type { ModelInfo } from "../types";
+import type { ModelInfo, TokenLogprob } from "../types";
 
 export const DUMMY_PROVIDER_NAME = "dummy";
+
+/**
+ * Models that should generate varied fake logprobs with alternatives.
+ * Other models will use probability=1.0 with no alternatives.
+ */
+const MODELS_WITH_VARIED_LOGPROBS: ReadonlySet<string> = new Set([
+	"random-prose",
+]);
+
+/**
+ * Pool of fake alternative tokens for generating varied logprobs.
+ * These are common short tokens/words that could plausibly appear as alternatives.
+ */
+const FAKE_ALTERNATIVES_POOL = [
+	"the",
+	"a",
+	"is",
+	"to",
+	"and",
+	"of",
+	"in",
+	"it",
+	"for",
+	"on",
+	"that",
+	"with",
+	"as",
+	"be",
+	"at",
+	"this",
+	"or",
+	"an",
+	"we",
+	"I",
+	"you",
+	"can",
+	"will",
+	"all",
+	"...",
+	",",
+	".",
+	"!",
+	"?",
+] as const;
 
 export const DUMMY_MODELS = [
 	{
@@ -39,6 +83,12 @@ export const DUMMY_MODELS = [
 		id: "magic-8-ball",
 		name: "Magic 8-Ball",
 		description: "Deterministic answers based on input hash.",
+	},
+	{
+		id: "random-prose",
+		name: "Random Prose",
+		description:
+			"Generates random word sequences with varied probabilities. Best for testing token rerolls.",
 	},
 ] as const;
 
@@ -113,6 +163,65 @@ const MAGIC_8_BALL_ANSWERS = [
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const TOKEN_CHUNK_SIZE = 6;
+
+/**
+ * Generate fake logprobs for a text chunk.
+ * Models in MODELS_WITH_VARIED_LOGPROBS get random probabilities and alternatives.
+ * Other models get probability=1.0 with no alternatives.
+ */
+export const generateFakeLogprobs = (
+	token: string,
+	modelId: string,
+): TokenLogprob => {
+	const useVaried = MODELS_WITH_VARIED_LOGPROBS.has(modelId);
+
+	if (!useVaried) {
+		// Deterministic models: probability 1.0, no alternatives
+		return {
+			token,
+			probability: 1.0,
+			segment: "content",
+			alternatives: [{ token, probability: 1.0 }],
+		};
+	}
+
+	// Varied models: generate random probability and alternatives
+	const baseProbability = 0.4 + Math.random() * 0.5; // 0.4-0.9
+	const alternativeCount = 2 + Math.floor(Math.random() * 3); // 2-4 alternatives
+
+	// Pick random alternatives from the pool
+	const shuffled = [...FAKE_ALTERNATIVES_POOL].sort(() => Math.random() - 0.5);
+	const pickedAlternatives = shuffled
+		.slice(0, alternativeCount)
+		.filter((alt) => alt !== token);
+
+	// Distribute remaining probability among alternatives
+	const remainingProb = 1 - baseProbability;
+	const alternatives = [{ token, probability: baseProbability }];
+
+	let usedProb = 0;
+	for (let i = 0; i < pickedAlternatives.length; i++) {
+		const isLast = i === pickedAlternatives.length - 1;
+		const altProb = isLast
+			? remainingProb - usedProb
+			: (remainingProb / pickedAlternatives.length) * (0.5 + Math.random());
+		usedProb += altProb;
+		alternatives.push({
+			token: pickedAlternatives[i],
+			probability: Math.max(0.01, altProb),
+		});
+	}
+
+	// Sort by probability descending
+	alternatives.sort((a, b) => b.probability - a.probability);
+
+	return {
+		token,
+		probability: baseProbability,
+		segment: "content",
+		alternatives,
+	};
+};
 
 const clampTokensPerSecond = (value?: number) => {
 	const numeric = Number(value);
@@ -362,6 +471,57 @@ class DummyLanguageModel implements LanguageModelV2 {
 					latestUserText || "Ask a question to reveal the future.";
 				const index = hashInput(question) % MAGIC_8_BALL_ANSWERS.length;
 				return MAGIC_8_BALL_ANSWERS[index];
+			}
+
+			case "random-prose": {
+				// Generate random word sequences - coherent with any reroll point
+				const randomWords = [
+					"the",
+					"quick",
+					"brown",
+					"fox",
+					"jumps",
+					"over",
+					"lazy",
+					"dog",
+					"and",
+					"then",
+					"runs",
+					"through",
+					"forest",
+					"while",
+					"birds",
+					"sing",
+					"softly",
+					"in",
+					"morning",
+					"light",
+					"as",
+					"clouds",
+					"drift",
+					"across",
+					"sky",
+					"bringing",
+					"gentle",
+					"breeze",
+					"that",
+					"rustles",
+					"leaves",
+					"creating",
+					"peaceful",
+					"melody",
+				];
+				const wordCount = 15 + Math.floor(Math.random() * 20);
+				const words: string[] = [];
+				for (let i = 0; i < wordCount; i++) {
+					words.push(
+						randomWords[Math.floor(Math.random() * randomWords.length)],
+					);
+				}
+				// Add some punctuation
+				let result = words.join(" ");
+				result = result.charAt(0).toUpperCase() + result.slice(1) + ".";
+				return result;
 			}
 
 			default:

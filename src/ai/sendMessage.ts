@@ -129,7 +129,9 @@ export const sendMessage = async (
 			});
 			setNodeStatus(assistantId, "final");
 		} else if (provider.kind === "dummy") {
-			const { createDummyProvider } = await import("./dummyProvider");
+			const { createDummyProvider, generateFakeLogprobs } = await import(
+				"./dummyProvider"
+			);
 			const dummyProvider = createDummyProvider({
 				tokensPerSecond: provider.tokensPerSecond,
 			});
@@ -141,9 +143,28 @@ export const sendMessage = async (
 				})) as ModelMessage[],
 				abortSignal: abortController.signal,
 			});
-			await processFullStream(stream.fullStream, {
-				append: (delta) => appendToNode(assistantId, delta),
-			});
+			// Custom stream processing with fake logprobs generation
+			for await (const part of stream.fullStream) {
+				if (part.type === "text-delta" && part.text) {
+					const tokenLogprob = generateFakeLogprobs(
+						part.text,
+						provider.modelId,
+					);
+					appendToNode(assistantId, {
+						content: part.text,
+						tokenLogprobs: [tokenLogprob],
+					});
+				}
+				if (part.type === "error") {
+					throw new Error(
+						typeof part.error === "string"
+							? part.error
+							: part.error instanceof Error
+								? part.error.message
+								: "Failed to stream response",
+					);
+				}
+			}
 			setNodeStatus(assistantId, "final");
 		} else {
 			const modelMessages = toModelMessages(filteredContext);
