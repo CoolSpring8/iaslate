@@ -163,6 +163,17 @@ const MAGIC_8_BALL_ANSWERS = [
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const createSeededRng = (seed: number) => {
+	let state = seed || 1;
+	return () => {
+		state = (state * 1664525 + 1013904223) >>> 0;
+		return state / 0x100000000;
+	};
+};
+
+const pickFrom = <T>(items: readonly T[], rng: () => number) =>
+	items[Math.floor(rng() * items.length)]!;
+
 /**
  * Generate fake logprobs for a text chunk.
  * Models in MODELS_WITH_VARIED_LOGPROBS get random probabilities and alternatives.
@@ -248,6 +259,31 @@ const extractLatestUserText = (prompt: LanguageModelV2Prompt) => {
 		}
 	}
 	return "";
+};
+
+const extractTrailingAssistantText = (prompt: LanguageModelV2Prompt) => {
+	const last = prompt.at(-1);
+	if (!last || last.role !== "assistant") {
+		return null;
+	}
+	return last.content
+		.filter((part) => part.type === "text")
+		.map((part) => part.text)
+		.join("");
+};
+
+const extractSingleUserPromptText = (prompt: LanguageModelV2Prompt) => {
+	if (prompt.length !== 1) {
+		return null;
+	}
+	const [message] = prompt;
+	if (!message || message.role !== "user") {
+		return null;
+	}
+	return message.content
+		.filter((part) => part.type === "text")
+		.map((part) => part.text)
+		.join("");
 };
 
 const hashInput = (input: string) => {
@@ -425,8 +461,7 @@ class DummyLanguageModel implements LanguageModelV2 {
 		};
 	}
 
-	private buildResponse(prompt: LanguageModelV2Prompt) {
-		const latestUserText = extractLatestUserText(prompt);
+	private buildScratchResponse(latestUserText: string) {
 		switch (this.modelId) {
 			case "markdown-stress-tester":
 				return [
@@ -439,9 +474,11 @@ class DummyLanguageModel implements LanguageModelV2 {
 				].join("");
 
 			case "corporate-ipm": {
-				const pick = (list: string[]) =>
-					list[Math.floor(Math.random() * list.length)];
-				const sentenceLength = 2 + Math.floor(Math.random() * 3);
+				const rng = createSeededRng(
+					hashInput(`${this.modelId}:${latestUserText}`),
+				);
+				const pick = (list: string[]) => pickFrom(list, rng);
+				const sentenceLength = 2 + Math.floor(rng() * 3);
 				const sentences: string[] = [];
 				for (let index = 0; index < sentenceLength; index += 1) {
 					sentences.push(
@@ -480,6 +517,9 @@ class DummyLanguageModel implements LanguageModelV2 {
 
 			case "random-prose": {
 				// Generate random word sequences - coherent with any reroll point
+				const rng = createSeededRng(
+					hashInput(`${this.modelId}:${latestUserText}`),
+				);
 				const randomWords = [
 					"the",
 					"quick",
@@ -516,12 +556,10 @@ class DummyLanguageModel implements LanguageModelV2 {
 					"peaceful",
 					"melody",
 				];
-				const wordCount = 15 + Math.floor(Math.random() * 20);
+				const wordCount = 15 + Math.floor(rng() * 20);
 				const words: string[] = [];
 				for (let i = 0; i < wordCount; i++) {
-					words.push(
-						randomWords[Math.floor(Math.random() * randomWords.length)],
-					);
+					words.push(pickFrom(randomWords, rng));
 				}
 				// Add some punctuation
 				let result = words.join(" ");
@@ -532,6 +570,131 @@ class DummyLanguageModel implements LanguageModelV2 {
 			default:
 				return "Dummy provider is ready.";
 		}
+	}
+
+	private buildContinuationFromPrefix(latestUserText: string, prefix: string) {
+		const rng = createSeededRng(
+			hashInput(`${this.modelId}:${latestUserText}:${prefix}`),
+		);
+
+		const needsSpace =
+			prefix.length > 0 && !/[\s\n]$/.test(prefix) && !/[({[\-]$/.test(prefix);
+		const leading = needsSpace ? " " : "";
+
+		switch (this.modelId) {
+			case "markdown-stress-tester":
+				return (
+					"\n\n## More Markdown\n\n" +
+					"- A fresh bullet\n- Another bullet\n\n" +
+					"```txt\ncontinued...\n```\n"
+				);
+
+			case "corporate-ipm": {
+				const pick = (list: string[]) => pickFrom(list, rng);
+				const sentenceLength = 1 + Math.floor(rng() * 3);
+				const sentences: string[] = [];
+				for (let index = 0; index < sentenceLength; index += 1) {
+					sentences.push(
+						`We should ${pick(CORPORATE_VERBS)} ${pick(CORPORATE_ADJECTIVES)} ${pick(CORPORATE_NOUNS)} across ${pick(CORPORATE_ADJECTIVES)} ${pick(CORPORATE_NOUNS)}.`,
+					);
+				}
+				return leading + sentences.join(" ");
+			}
+
+			case "eliza-lite": {
+				if (!latestUserText) {
+					return `${leading}Tell me more.`;
+				}
+				return `${leading}How does that make you feel?`;
+			}
+
+			case "unhelpful-cat": {
+				const mash = KEYBOARD_MASH[hashInput(prefix) % KEYBOARD_MASH.length];
+				return `${leading}Meow.\n${mash}`;
+			}
+
+			case "magic-8-ball":
+				return `${leading}Ask again later.`;
+
+			case "random-prose": {
+				const randomWords = [
+					"the",
+					"quick",
+					"brown",
+					"fox",
+					"jumps",
+					"over",
+					"lazy",
+					"dog",
+					"and",
+					"then",
+					"runs",
+					"through",
+					"forest",
+					"while",
+					"birds",
+					"sing",
+					"softly",
+					"in",
+					"morning",
+					"light",
+					"as",
+					"clouds",
+					"drift",
+					"across",
+					"sky",
+					"bringing",
+					"gentle",
+					"breeze",
+					"that",
+					"rustles",
+					"leaves",
+					"creating",
+					"peaceful",
+					"melody",
+				];
+				const wordCount = 10 + Math.floor(rng() * 20);
+				const words: string[] = [];
+				for (let i = 0; i < wordCount; i++) {
+					words.push(pickFrom(randomWords, rng));
+				}
+				let result = words.join(" ");
+				if (result.length > 0) {
+					result = result.charAt(0).toLowerCase() + result.slice(1);
+				}
+				return `${leading}${result}.`;
+			}
+
+			default:
+				return `${leading}...`;
+		}
+	}
+
+	private buildResponse(prompt: LanguageModelV2Prompt) {
+		const assistantPrefix = extractTrailingAssistantText(prompt);
+		const latestUserText = extractLatestUserText(prompt);
+
+		if (assistantPrefix === null) {
+			const completionPrefix = extractSingleUserPromptText(prompt);
+			if (completionPrefix !== null) {
+				return this.buildContinuationFromPrefix(
+					completionPrefix,
+					completionPrefix,
+				);
+			}
+			return this.buildScratchResponse(latestUserText);
+		}
+
+		const scratch = this.buildScratchResponse(latestUserText);
+		if (!assistantPrefix) {
+			return scratch;
+		}
+
+		if (scratch.startsWith(assistantPrefix)) {
+			return scratch.slice(assistantPrefix.length);
+		}
+
+		return this.buildContinuationFromPrefix(latestUserText, assistantPrefix);
 	}
 }
 
