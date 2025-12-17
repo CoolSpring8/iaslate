@@ -128,7 +128,6 @@ export const sendMessage = async (
 				append: (delta) => appendToNode(assistantId, delta),
 			});
 			setNodeStatus(assistantId, "final");
-			setNodeStatus(assistantId, "final");
 		} else if (provider.kind === "dummy") {
 			const { createDummyProvider } = await import("./dummyProvider");
 			const dummyProvider = createDummyProvider({
