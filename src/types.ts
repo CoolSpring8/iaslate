@@ -86,5 +86,5 @@ export type ChatProviderReady =
 
 export type CompletionProviderReady = Extract<
 	ChatProviderReady,
-	{ kind: "openai-compatible" }
+	{ kind: "openai-compatible" } | { kind: "dummy" }
 >;

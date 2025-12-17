@@ -46,29 +46,66 @@ export const useTextCompletion = ({
 			}
 			setIsGenerating(true);
 			try {
-				const stream = streamText({
-					model: readiness.openAIProvider.completionModel(readiness.modelId),
-					prompt: seedText,
-					temperature: 0.3,
-					abortSignal: abortController.signal,
-					includeRawChunks: true,
-					providerOptions: buildCompletionLogprobOptions(
-						OPENAI_COMPATIBLE_PROVIDER_NAME,
-					),
-				});
-				await processFullStream(stream.fullStream, {
-					append: (delta) => {
-						if (delta.content) {
-							setTextContent((draft) => draft + delta.content!);
-						}
-						if (delta.tokenLogprobs?.length) {
+				if (readiness.kind === "dummy") {
+					// Dummy provider: custom streaming with fake logprobs
+					const { createDummyProvider, generateFakeLogprobs } = await import(
+						"../ai/dummyProvider"
+					);
+					const dummyProvider = createDummyProvider({
+						tokensPerSecond: readiness.tokensPerSecond,
+					});
+					const stream = streamText({
+						model: dummyProvider.completionModel(readiness.modelId),
+						prompt: seedText,
+						abortSignal: abortController.signal,
+					});
+					for await (const part of stream.fullStream) {
+						if (part.type === "text-delta" && part.text) {
+							const tokenLogprob = generateFakeLogprobs(
+								part.text,
+								readiness.modelId,
+							);
+							setTextContent((draft) => draft + part.text);
 							setTokenLogprobs((draft) => {
-								draft.push(...delta.tokenLogprobs!);
+								draft.push(tokenLogprob);
 							});
 						}
-					},
-					parseRawChunk: parseCompletionLogprobsChunk,
-				});
+						if (part.type === "error") {
+							throw new Error(
+								typeof part.error === "string"
+									? part.error
+									: part.error instanceof Error
+										? part.error.message
+										: "Failed to stream response",
+							);
+						}
+					}
+				} else {
+					// OpenAI-compatible provider
+					const stream = streamText({
+						model: readiness.openAIProvider.completionModel(readiness.modelId),
+						prompt: seedText,
+						temperature: 0.3,
+						abortSignal: abortController.signal,
+						includeRawChunks: true,
+						providerOptions: buildCompletionLogprobOptions(
+							OPENAI_COMPATIBLE_PROVIDER_NAME,
+						),
+					});
+					await processFullStream(stream.fullStream, {
+						append: (delta) => {
+							if (delta.content) {
+								setTextContent((draft) => draft + delta.content!);
+							}
+							if (delta.tokenLogprobs?.length) {
+								setTokenLogprobs((draft) => {
+									draft.push(...delta.tokenLogprobs!);
+								});
+							}
+						},
+						parseRawChunk: parseCompletionLogprobsChunk,
+					});
+				}
 			} catch (error) {
 				if (abortController.signal.aborted) {
 					return;

@@ -241,9 +241,11 @@ const App = () => {
 						<TextCompletionView
 							value={textContent}
 							isGenerating={isTextGenerating}
-							isPredictDisabled={providerKind !== "openai-compatible"}
+							isPredictDisabled={
+								providerKind !== "openai-compatible" && providerKind !== "dummy"
+							}
 							disabledReason={
-								providerKind !== "openai-compatible"
+								providerKind !== "openai-compatible" && providerKind !== "dummy"
 									? "Built-in AI supports chat only"
 									: undefined
 							}
