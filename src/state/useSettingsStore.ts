@@ -2,6 +2,7 @@ import { builtInAI } from "@built-in-ai/core";
 import { get as getValue, set as setValue } from "idb-keyval";
 import { toast } from "sonner";
 import { create } from "zustand";
+import { fetchDummyModels } from "../ai/dummyProvider";
 import { fetchOpenAICompatibleModels } from "../ai/openaiCompatible";
 import { settingsKey } from "../constants/storageKeys";
 import type { BuiltInAvailability, ModelInfo, ProviderEntry } from "../types";
@@ -227,7 +228,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
 			if (activeProvider.kind === "dummy") {
 				try {
-					const { fetchDummyModels } = await import("../ai/dummyProvider");
 					const fetchedModels = await fetchDummyModels();
 					const currentModel = activeProvider.activeModelId;
 					const currentModelStillValid = fetchedModels.some(

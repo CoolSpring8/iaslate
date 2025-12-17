@@ -2,6 +2,7 @@ import { streamText } from "ai";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import { createDummyProvider, generateFakeLogprobs } from "../ai/dummyProvider";
 import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "../ai/openaiCompatible";
 import {
 	buildChatLogprobOptions,
@@ -432,9 +433,6 @@ export const useConversationController = ({
 					setIsGenerating(true);
 					if (readiness.kind === "dummy") {
 						// Dummy provider: use custom streaming with fake logprobs
-						const { createDummyProvider, generateFakeLogprobs } = await import(
-							"../ai/dummyProvider"
-						);
 						const dummyProvider = createDummyProvider({
 							tokensPerSecond: readiness.tokensPerSecond,
 						});

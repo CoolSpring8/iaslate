@@ -6,6 +6,7 @@ import type {
 	MessageContent,
 	TokenLogprob,
 } from "../types";
+import { createDummyProvider, generateFakeLogprobs } from "./dummyProvider";
 import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "./openaiCompatible";
 import {
 	buildChatLogprobOptions,
@@ -129,9 +130,6 @@ export const sendMessage = async (
 			});
 			setNodeStatus(assistantId, "final");
 		} else if (provider.kind === "dummy") {
-			const { createDummyProvider, generateFakeLogprobs } = await import(
-				"./dummyProvider"
-			);
 			const dummyProvider = createDummyProvider({
 				tokensPerSecond: provider.tokensPerSecond,
 			});

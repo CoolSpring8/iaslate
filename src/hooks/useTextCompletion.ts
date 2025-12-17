@@ -2,6 +2,7 @@ import { streamText } from "ai";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useImmer } from "use-immer";
+import { createDummyProvider, generateFakeLogprobs } from "../ai/dummyProvider";
 import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "../ai/openaiCompatible";
 import {
 	buildCompletionLogprobOptions,
@@ -48,9 +49,6 @@ export const useTextCompletion = ({
 			try {
 				if (readiness.kind === "dummy") {
 					// Dummy provider: custom streaming with fake logprobs
-					const { createDummyProvider, generateFakeLogprobs } = await import(
-						"../ai/dummyProvider"
-					);
 					const dummyProvider = createDummyProvider({
 						tokensPerSecond: readiness.tokensPerSecond,
 					});
