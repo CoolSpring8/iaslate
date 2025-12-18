@@ -300,6 +300,16 @@ const App = () => {
 							size="sm"
 							title="Side Panel"
 							padding="0"
+							styles={{
+								content: {
+									display: "flex",
+									flexDirection: "column",
+								},
+								body: {
+									flex: 1,
+									minHeight: 0,
+								},
+							}}
 						>
 							{sidePanelContent}
 						</Drawer>
