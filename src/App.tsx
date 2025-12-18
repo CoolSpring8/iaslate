@@ -1,5 +1,6 @@
 import { builtInAI } from "@built-in-ai/core";
-import { useDisclosure } from "@mantine/hooks";
+import { Drawer } from "@mantine/core";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
@@ -48,6 +49,13 @@ const App = () => {
 		})),
 	);
 	const [view, setView] = useState<AppView>("chat");
+	const isMobile = useMediaQuery("(max-width: 768px)", undefined, {
+		getInitialValueInEffect: false,
+	});
+	const [
+		isMobilePanelOpen,
+		{ open: openMobilePanel, close: closeMobilePanel },
+	] = useDisclosure(false);
 
 	const activeProvider = useMemo(
 		() => providers.find((p) => p.id === activeProviderId),
@@ -190,6 +198,32 @@ const App = () => {
 	const isModelSelectionSupported =
 		providerKind === "openai-compatible" || providerKind === "dummy";
 
+	const sidePanelElement = (
+		<SidePanel
+			providerKind={providerKind}
+			onNodeDoubleClick={(id) => {
+				activateThread(id);
+				if (isMobile) closeMobilePanel();
+			}}
+			onSetActiveNode={activateThread}
+			onDuplicateFromNode={duplicateFromNode}
+		/>
+	);
+
+	const handleToggleChatDiagram = useCallback(() => {
+		void setShowChatDiagram(!showChatDiagram);
+	}, [setShowChatDiagram, showChatDiagram]);
+
+	const handleOpenSidePanel = useCallback(() => {
+		openMobilePanel();
+	}, [openMobilePanel]);
+
+	useEffect(() => {
+		if (!isMobile || view !== "chat") {
+			closeMobilePanel();
+		}
+	}, [closeMobilePanel, isMobile, view]);
+
 	return (
 		<SnapshotIO
 			exportSnapshot={exportSnapshot}
@@ -212,9 +246,8 @@ const App = () => {
 						view={view}
 						onViewChange={setView}
 						showChatDiagram={showChatDiagram}
-						onToggleChatDiagram={() => {
-							void setShowChatDiagram(!showChatDiagram);
-						}}
+						onToggleChatDiagram={handleToggleChatDiagram}
+						onOpenSidePanel={handleOpenSidePanel}
 						onClear={handleClearConversation}
 						onImport={triggerImport}
 						onExport={triggerExport}
@@ -239,14 +272,9 @@ const App = () => {
 									onTokenReroll={rerollFromToken}
 								/>
 							</div>
-							{showChatDiagram ? (
+							{showChatDiagram && !isMobile ? (
 								<div className="min-w-0 min-h-0 flex-1 overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.04)] dark:shadow-[-2px_0_8px_rgba(0,0,0,0.2)]">
-									<SidePanel
-										providerKind={providerKind}
-										onNodeDoubleClick={activateThread}
-										onSetActiveNode={activateThread}
-										onDuplicateFromNode={duplicateFromNode}
-									/>
+									{sidePanelElement}
 								</div>
 							) : null}
 						</div>
@@ -271,6 +299,19 @@ const App = () => {
 							generatedPrefix={textSeed}
 						/>
 					)}
+
+					{view === "chat" && isMobile ? (
+						<Drawer
+							opened={isMobilePanelOpen}
+							onClose={closeMobilePanel}
+							position="right"
+							size="sm"
+							title="Tree & Settings"
+							padding="0"
+						>
+							{sidePanelElement}
+						</Drawer>
+					) : null}
 					<SettingsModal open={isSettingsOpen} onClose={onSettingsClose} />
 					<Toaster />
 				</div>

@@ -266,161 +266,166 @@ const ChatView = ({
 					event.preventDefault();
 				}}
 			>
-				{messages.map((message, index) => (
-					<MessageItem
-						key={message._metadata.uuid}
-						message={message}
-						isEditing={editingMessageId === message._metadata.uuid}
-						isLast={index === messages.length - 1}
-						isGenerating={isGenerating}
-						showTokens={tokenViewStates[message._metadata.uuid] ?? false}
-						onEdit={() => onEditStart(message._metadata.uuid)}
-						onDelete={() => onDeleteMessage(message._metadata.uuid)}
-						onDetach={() => onDetachMessage(message._metadata.uuid)}
-						tokenLogprobs={message._metadata.tokenLogprobs}
-						onShowTokensChange={(show) =>
-							handleTokenViewChange(message._metadata.uuid, show)
-						}
-						onRerollToken={
-							onTokenReroll
-								? (index, alternative) =>
-										handleTokenReroll(
-											message._metadata.uuid,
-											index,
-											alternative,
-										)
-								: undefined
-						}
-						disableReroll={!onTokenReroll}
-					/>
-				))}
-			</div>
-			<div className="relative px-4 py-2">
-				<div className="flex items-center">
-					<div className="flex-1 overflow-hidden rounded-lg border border-solid border-slate-200 bg-white shadow-sm">
-						{attachments.length > 0 && (
-							<div className="flex flex-wrap items-center gap-2 px-3 py-2">
-								{attachments.map((attachment, index) =>
-									attachment.type === "image" ? (
-										<div
-											key={`${attachment.image}-${index}`}
-											className="flex items-center gap-2 rounded-full bg-white px-2 py-1 text-slate-700 shadow-sm ring-1 ring-slate-200"
-										>
-											<div className="h-7 w-7 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
-												<img
-													src={attachment.image}
-													alt="User attachment"
-													className="h-full w-full object-cover"
-												/>
-											</div>
-											<span className="text-xs font-medium leading-none">
-												Image {index + 1}
-											</span>
-											<UnstyledButton
-												className="ml-1 flex h-5 w-5 items-center justify-center rounded-full text-slate-600 hover:bg-slate-200"
-												onClick={() => {
-													setAttachments((draft) => {
-														draft.splice(index, 1);
-													});
-												}}
-												title="Remove attachment"
-											>
-												<div className="i-lucide-x w-4 h-4" />
-											</UnstyledButton>
-										</div>
-									) : null,
-								)}
-							</div>
-						)}
-						<Textarea
-							className="w-full"
-							classNames={{
-								input: "px-3 py-2 text-sm leading-5 placeholder:text-slate-400",
-							}}
-							minRows={1}
-							maxRows={5}
-							variant="unstyled"
-							placeholder="Type your message..."
-							value={prompt}
-							onChange={(event) => {
-								setPrompt(event.target.value);
-							}}
-							onPaste={handlePaste}
-							onCompositionStart={() => {
-								isComposing.current = true;
-							}}
-							onCompositionEnd={() => {
-								isComposing.current = false;
-							}}
-							onKeyDown={(event) => {
-								if (
-									event.key === "Enter" &&
-									!event.shiftKey &&
-									!event.nativeEvent.isComposing &&
-									!isComposing.current
-								) {
-									event.preventDefault();
-									handleSubmit();
-								}
-							}}
-						/>
-					</div>
-					<UnstyledButton
-						className="ml-3 border border-solid border-slate-300 rounded-full w-8 h-8 flex items-center justify-center"
-						onClick={() => {
-							fileInputRef.current?.click();
-						}}
-						title="Attach image"
-					>
-						<div className="i-lucide-image w-4 h-4" />
-					</UnstyledButton>
-					<UnstyledButton
-						className="ml-2 border border-solid border-slate-300 rounded-full w-8 h-8 flex items-center justify-center"
-						onClick={handleSubmit}
-					>
-						<div
-							className={twJoin(
-								"w-4 h-4",
-								editingMessageId
-									? "i-lucide-check"
-									: "i-lucide-send-horizontal",
-								isGenerating ? "animate-spin" : "",
-							)}
-						/>
-					</UnstyledButton>
-				</div>
-				<input
-					ref={fileInputRef}
-					type="file"
-					accept="image/*"
-					className="hidden"
-					onChange={(event) => {
-						const { files } = event.target;
-						if (files) {
-							for (const file of Array.from(files)) {
-								void handleFileInput(file);
+				<div className="mx-auto w-full max-w-3xl">
+					{messages.map((message, index) => (
+						<MessageItem
+							key={message._metadata.uuid}
+							message={message}
+							isEditing={editingMessageId === message._metadata.uuid}
+							isLast={index === messages.length - 1}
+							isGenerating={isGenerating}
+							showTokens={tokenViewStates[message._metadata.uuid] ?? false}
+							onEdit={() => onEditStart(message._metadata.uuid)}
+							onDelete={() => onDeleteMessage(message._metadata.uuid)}
+							onDetach={() => onDetachMessage(message._metadata.uuid)}
+							tokenLogprobs={message._metadata.tokenLogprobs}
+							onShowTokensChange={(show) =>
+								handleTokenViewChange(message._metadata.uuid, show)
 							}
-							event.target.value = "";
-						}
-					}}
-				/>
-				{editingMessage && (
-					<div className="absolute left-4 -top-8 h-8 w-[calc(100%-2rem)] rounded bg-orange-300 p-2 flex items-center text-slate-700 text-sm">
-						<div className="i-lucide-edit flex-none" />
-						<p className="ml-1 line-clamp-1">
-							Editing:{" "}
-							{splitContent(editingMessage.content).text || "(image content)"}
-						</p>
-						<UnstyledButton
-							className="i-lucide-x ml-auto flex-none"
-							onClick={() => {
-								onEditCancel();
-								setPrompt("");
-								setAttachments([]);
-							}}
+							onRerollToken={
+								onTokenReroll
+									? (index, alternative) =>
+											handleTokenReroll(
+												message._metadata.uuid,
+												index,
+												alternative,
+											)
+									: undefined
+							}
+							disableReroll={!onTokenReroll}
 						/>
+					))}
+				</div>
+			</div>
+			<div className="px-4 py-2">
+				<div className="relative mx-auto w-full max-w-3xl">
+					<div className="flex items-center">
+						<div className="flex-1 overflow-hidden rounded-lg border border-solid border-slate-200 bg-white shadow-sm">
+							{attachments.length > 0 && (
+								<div className="flex flex-wrap items-center gap-2 px-3 py-2">
+									{attachments.map((attachment, index) =>
+										attachment.type === "image" ? (
+											<div
+												key={`${attachment.image}-${index}`}
+												className="flex items-center gap-2 rounded-full bg-white px-2 py-1 text-slate-700 shadow-sm ring-1 ring-slate-200"
+											>
+												<div className="h-7 w-7 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
+													<img
+														src={attachment.image}
+														alt="User attachment"
+														className="h-full w-full object-cover"
+													/>
+												</div>
+												<span className="text-xs font-medium leading-none">
+													Image {index + 1}
+												</span>
+												<UnstyledButton
+													className="ml-1 flex h-5 w-5 items-center justify-center rounded-full text-slate-600 hover:bg-slate-200"
+													onClick={() => {
+														setAttachments((draft) => {
+															draft.splice(index, 1);
+														});
+													}}
+													title="Remove attachment"
+												>
+													<div className="i-lucide-x w-4 h-4" />
+												</UnstyledButton>
+											</div>
+										) : null,
+									)}
+								</div>
+							)}
+							<Textarea
+								className="w-full"
+								classNames={{
+									input:
+										"px-3 py-2 text-sm leading-5 placeholder:text-slate-400",
+								}}
+								minRows={1}
+								maxRows={5}
+								variant="unstyled"
+								placeholder="Type your message..."
+								value={prompt}
+								onChange={(event) => {
+									setPrompt(event.target.value);
+								}}
+								onPaste={handlePaste}
+								onCompositionStart={() => {
+									isComposing.current = true;
+								}}
+								onCompositionEnd={() => {
+									isComposing.current = false;
+								}}
+								onKeyDown={(event) => {
+									if (
+										event.key === "Enter" &&
+										!event.shiftKey &&
+										!event.nativeEvent.isComposing &&
+										!isComposing.current
+									) {
+										event.preventDefault();
+										handleSubmit();
+									}
+								}}
+							/>
+						</div>
+						<UnstyledButton
+							className="ml-3 border border-solid border-slate-300 rounded-full w-8 h-8 flex items-center justify-center"
+							onClick={() => {
+								fileInputRef.current?.click();
+							}}
+							title="Attach image"
+						>
+							<div className="i-lucide-image w-4 h-4" />
+						</UnstyledButton>
+						<UnstyledButton
+							className="ml-2 border border-solid border-slate-300 rounded-full w-8 h-8 flex items-center justify-center"
+							onClick={handleSubmit}
+						>
+							<div
+								className={twJoin(
+									"w-4 h-4",
+									editingMessageId
+										? "i-lucide-check"
+										: "i-lucide-send-horizontal",
+									isGenerating ? "animate-spin" : "",
+								)}
+							/>
+						</UnstyledButton>
 					</div>
-				)}
+					<input
+						ref={fileInputRef}
+						type="file"
+						accept="image/*"
+						className="hidden"
+						onChange={(event) => {
+							const { files } = event.target;
+							if (files) {
+								for (const file of Array.from(files)) {
+									void handleFileInput(file);
+								}
+								event.target.value = "";
+							}
+						}}
+					/>
+					{editingMessage && (
+						<div className="absolute left-0 -top-8 h-8 w-full rounded bg-orange-300 p-2 flex items-center text-slate-700 text-sm">
+							<div className="i-lucide-edit flex-none" />
+							<p className="ml-1 line-clamp-1">
+								Editing:{" "}
+								{splitContent(editingMessage.content).text || "(image content)"}
+							</p>
+							<UnstyledButton
+								className="i-lucide-x ml-auto flex-none"
+								onClick={() => {
+									onEditCancel();
+									setPrompt("");
+									setAttachments([]);
+								}}
+							/>
+						</div>
+					)}
+				</div>
 			</div>
 		</div>
 	);

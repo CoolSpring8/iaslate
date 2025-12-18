@@ -12,6 +12,7 @@ interface HeaderProps {
 	onViewChange: (value: AppView) => void;
 	showChatDiagram?: boolean;
 	onToggleChatDiagram?: () => void;
+	onOpenSidePanel?: () => void;
 	onClear: () => void;
 	onImport: () => void;
 	onExport: () => void;
@@ -38,92 +39,103 @@ const Header = ({
 	onViewChange,
 	showChatDiagram,
 	onToggleChatDiagram,
+	onOpenSidePanel,
 	onClear,
 	onImport,
 	onExport,
 	onOpenSettings,
 }: HeaderProps) => (
-	<div className="flex items-center px-4 py-2">
-		<div className="flex items-center gap-2">
-			<h1 className="text-xl font-bold font-mono">iaslate</h1>
-			{modelSelectorDisabled ? (
-				<div className="flex h-[2.25rem] w-64 items-center rounded-md border border-solid border-slate-300 bg-white px-3 text-sm leading-[1.1] text-slate-900 shadow-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-					{modelStatus ?? "Model selection disabled"}
-				</div>
-			) : (
-				<Select
-					className="w-64"
-					data={models.map((model) => ({
-						value: model.id,
-						label: model.name || model.id,
+	<header className="px-4 py-2">
+		<div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-y-2">
+			<div className="flex items-center gap-2">
+				<h1 className="text-xl font-bold font-mono">iaslate</h1>
+				{modelSelectorDisabled ? (
+					<div className="flex h-[2.25rem] w-full sm:w-64 items-center rounded-md border border-solid border-slate-300 bg-white px-3 text-sm leading-[1.1] text-slate-900 shadow-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+						{modelStatus ?? "Model selection disabled"}
+					</div>
+				) : (
+					<Select
+						className="w-full sm:w-64"
+						data={models.map((model) => ({
+							value: model.id,
+							label: model.name || model.id,
+						}))}
+						value={activeModel}
+						onChange={onModelChange}
+						placeholder={modelPlaceholder ?? "Select a model"}
+						disabled={modelSelectorDisabled}
+						aria-label="Select a model"
+					/>
+				)}
+			</div>
+			<div className="ml-0 sm:ml-4">
+				<SegmentedControl
+					size="sm"
+					value={view}
+					onChange={(value) => onViewChange(value as AppView)}
+					data={viewOptions.map((option) => ({
+						value: option.value,
+						label: (
+							<span className="flex items-center gap-2 text-sm font-medium">
+								<span className={`w-4 h-4 ${option.icon}`} aria-hidden="true" />
+								{option.label}
+							</span>
+						),
 					}))}
-					value={activeModel}
-					onChange={onModelChange}
-					placeholder={modelPlaceholder ?? "Select a model"}
-					disabled={modelSelectorDisabled}
-					aria-label="Select a model"
+					withItemsBorders={false}
+					radius="xl"
+					classNames={{
+						root: "rounded-full bg-slate-100/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 p-1",
+						indicator:
+							"rounded-full bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm",
+						control:
+							"text-slate-500 dark:text-slate-400 data-[active=true]:text-slate-900 dark:data-[active=true]:text-white transition-colors",
+						label: "px-3 py-1.5",
+					}}
+					aria-label="View switch"
 				/>
-			)}
-		</div>
-		<div className="ml-4">
-			<SegmentedControl
-				size="sm"
-				value={view}
-				onChange={(value) => onViewChange(value as AppView)}
-				data={viewOptions.map((option) => ({
-					value: option.value,
-					label: (
-						<span className="flex items-center gap-2 text-sm font-medium">
-							<span className={`w-4 h-4 ${option.icon}`} aria-hidden="true" />
-							{option.label}
-						</span>
-					),
-				}))}
-				withItemsBorders={false}
-				radius="xl"
-				classNames={{
-					root: "rounded-full bg-slate-100/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 p-1",
-					indicator:
-						"rounded-full bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm",
-					control:
-						"text-slate-500 dark:text-slate-400 data-[active=true]:text-slate-900 dark:data-[active=true]:text-white transition-colors",
-					label: "px-3 py-1.5",
-				}}
-				aria-label="View switch"
-			/>
-		</div>
-		<div className="ml-auto flex gap-4">
-			{view === "chat" && onToggleChatDiagram ? (
+			</div>
+			<div className="ml-auto flex gap-4">
+				{view === "chat" && onToggleChatDiagram ? (
+					<UnstyledButton
+						className={`i-lucide-git-branch hidden sm:block w-5 h-5 ${showChatDiagram ? "text-blue-600" : "text-slate-500"}`}
+						title={showChatDiagram ? "Hide diagram" : "Show diagram"}
+						aria-label={showChatDiagram ? "Hide diagram" : "Show diagram"}
+						aria-pressed={showChatDiagram}
+						onClick={onToggleChatDiagram}
+					/>
+				) : null}
+				{view === "chat" && onOpenSidePanel ? (
+					<UnstyledButton
+						className="i-lucide-panel-right w-5 h-5 text-slate-500 sm:hidden"
+						title="Open tree/settings"
+						aria-label="Open tree/settings"
+						onClick={onOpenSidePanel}
+					/>
+				) : null}
 				<UnstyledButton
-					className={`i-lucide-git-branch w-5 h-5 ${showChatDiagram ? "text-blue-600" : "text-slate-500"}`}
-					title={showChatDiagram ? "Hide diagram" : "Show diagram"}
-					aria-label={showChatDiagram ? "Hide diagram" : "Show diagram"}
-					aria-pressed={showChatDiagram}
-					onClick={onToggleChatDiagram}
+					className="i-lucide-eraser w-5 h-5"
+					title="Clear conversation"
+					onClick={onClear}
 				/>
-			) : null}
-			<UnstyledButton
-				className="i-lucide-eraser w-5 h-5"
-				title="Clear conversation"
-				onClick={onClear}
-			/>
-			<UnstyledButton
-				className="i-lucide-file-input w-5 h-5"
-				title="Import from JSON"
-				onClick={onImport}
-			/>
-			<UnstyledButton
-				className="i-lucide-file-output w-5 h-5"
-				title="Export to JSON"
-				onClick={onExport}
-			/>
-			<UnstyledButton
-				className="i-lucide-settings w-5 h-5"
-				title="Settings"
-				onClick={onOpenSettings}
-			/>
+				<UnstyledButton
+					className="i-lucide-file-input w-5 h-5"
+					title="Import from JSON"
+					onClick={onImport}
+				/>
+				<UnstyledButton
+					className="i-lucide-file-output w-5 h-5"
+					title="Export to JSON"
+					onClick={onExport}
+				/>
+				<UnstyledButton
+					className="i-lucide-settings w-5 h-5"
+					title="Settings"
+					onClick={onOpenSettings}
+				/>
+			</div>
 		</div>
-	</div>
+	</header>
 );
 
 export default Header;
