@@ -6,7 +6,7 @@ import type {
 	MessageContent,
 	TokenLogprob,
 } from "../types";
-import { createDummyProvider, generateFakeLogprobs } from "./dummyProvider";
+import { createDummyProvider } from "./dummyProvider";
 import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "./openaiCompatible";
 import {
 	buildChatLogprobOptions,
@@ -48,25 +48,6 @@ const hasMessageContent = (content: MessageContent) => {
 	return content.some((part) =>
 		part.type === "image" ? part.image.length > 0 : part.text.trim().length > 0,
 	);
-};
-
-const toTextSeed = (content: MessageContent) =>
-	typeof content === "string"
-		? content
-		: content
-				.filter((part) => part.type === "text")
-				.map((part) => part.text)
-				.join(" ")
-				.trim();
-
-const extractLatestUserSeed = (messages: Message[]) => {
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const message = messages[index];
-		if (message?.role === "user") {
-			return toTextSeed(message.content);
-		}
-	}
-	return "";
 };
 
 export const sendMessage = async (
@@ -152,9 +133,6 @@ export const sendMessage = async (
 			const dummyProvider = createDummyProvider({
 				tokensPerSecond: provider.tokensPerSecond,
 			});
-			const logprobSeed = extractLatestUserSeed(filteredContext);
-			let tokenIndex =
-				contextMessages.at(-1)?._metadata.tokenLogprobs?.length ?? 0;
 			const stream = streamText({
 				model: dummyProvider.chatModel(provider.modelId),
 				messages: filteredContext.map((m) => ({
@@ -163,44 +141,9 @@ export const sendMessage = async (
 				})) as ModelMessage[],
 				abortSignal: abortController.signal,
 			});
-			// Custom stream processing with fake logprobs generation
-			for await (const part of stream.fullStream) {
-				if (part.type === "reasoning-delta" && part.text) {
-					const tokenLogprob = {
-						...generateFakeLogprobs(part.text, provider.modelId, {
-							seed: logprobSeed,
-							tokenIndex,
-						}),
-						segment: "reasoning" as const,
-					};
-					tokenIndex += 1;
-					appendToNode(assistantId, {
-						reasoning: part.text,
-						tokenLogprobs: [tokenLogprob],
-					});
-				}
-				if (part.type === "text-delta" && part.text) {
-					const tokenLogprob = generateFakeLogprobs(
-						part.text,
-						provider.modelId,
-						{ seed: logprobSeed, tokenIndex },
-					);
-					tokenIndex += 1;
-					appendToNode(assistantId, {
-						content: part.text,
-						tokenLogprobs: [tokenLogprob],
-					});
-				}
-				if (part.type === "error") {
-					throw new Error(
-						typeof part.error === "string"
-							? part.error
-							: part.error instanceof Error
-								? part.error.message
-								: "Failed to stream response",
-					);
-				}
-			}
+			await processFullStream(stream.fullStream, {
+				append: (delta) => appendToNode(assistantId, delta),
+			});
 			setNodeStatus(assistantId, "final");
 		} else {
 			const modelMessages = toModelMessages(filteredContext);

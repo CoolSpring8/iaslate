@@ -2,7 +2,7 @@ import { streamText } from "ai";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useImmer } from "use-immer";
-import { createDummyProvider, generateFakeLogprobs } from "../ai/dummyProvider";
+import { createDummyProvider } from "../ai/dummyProvider";
 import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "../ai/openaiCompatible";
 import {
 	buildCompletionLogprobOptions,
@@ -50,7 +50,7 @@ export const useTextCompletion = ({
 			setIsGenerating(true);
 			try {
 				if (readiness.kind === "dummy") {
-					// Dummy provider: custom streaming with fake logprobs
+					// Dummy provider
 					const dummyProvider = createDummyProvider({
 						tokensPerSecond: readiness.tokensPerSecond,
 					});
@@ -58,30 +58,25 @@ export const useTextCompletion = ({
 						model: dummyProvider.completionModel(readiness.modelId),
 						prompt: seedText,
 						abortSignal: abortController.signal,
+						providerOptions: {
+							dummy: {
+								logprobSeed,
+								tokenIndexOffset: tokenIndex,
+							},
+						},
 					});
-					for await (const part of stream.fullStream) {
-						if (part.type === "text-delta" && part.text) {
-							const tokenLogprob = generateFakeLogprobs(
-								part.text,
-								readiness.modelId,
-								{ seed: logprobSeed, tokenIndex },
-							);
-							tokenIndex += 1;
-							setTextContent((draft) => draft + part.text);
-							setTokenLogprobs((draft) => {
-								draft.push(tokenLogprob);
-							});
-						}
-						if (part.type === "error") {
-							throw new Error(
-								typeof part.error === "string"
-									? part.error
-									: part.error instanceof Error
-										? part.error.message
-										: "Failed to stream response",
-							);
-						}
-					}
+					await processFullStream(stream.fullStream, {
+						append: (delta) => {
+							if (delta.content) {
+								setTextContent((draft) => draft + delta.content!);
+							}
+							if (delta.tokenLogprobs?.length) {
+								setTokenLogprobs((draft) => {
+									draft.push(...delta.tokenLogprobs!);
+								});
+							}
+						},
+					});
 				} else {
 					// OpenAI-compatible provider
 					const stream = streamText({

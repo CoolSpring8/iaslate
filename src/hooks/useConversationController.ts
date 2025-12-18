@@ -2,7 +2,7 @@ import { streamText } from "ai";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
-import { createDummyProvider, generateFakeLogprobs } from "../ai/dummyProvider";
+import { createDummyProvider } from "../ai/dummyProvider";
 import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "../ai/openaiCompatible";
 import {
 	buildChatLogprobOptions,
@@ -26,25 +26,6 @@ interface UseConversationControllerOptions {
 	defaultSystemPrompt: string;
 	ensureChatReady: () => ChatProviderReady | null;
 }
-
-const toTextSeed = (content: MessageContent) =>
-	typeof content === "string"
-		? content
-		: content
-				.filter((part) => part.type === "text")
-				.map((part) => part.text)
-				.join(" ")
-				.trim();
-
-const extractLatestUserSeed = (messages: Message[]) => {
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const message = messages[index];
-		if (message?.role === "user") {
-			return toTextSeed(message.content);
-		}
-	}
-	return "";
-};
 
 export const useConversationController = ({
 	defaultSystemPrompt,
@@ -451,55 +432,19 @@ export const useConversationController = ({
 				try {
 					setIsGenerating(true);
 					if (readiness.kind === "dummy") {
-						// Dummy provider: use custom streaming with fake logprobs
+						// Dummy provider
 						const dummyProvider = createDummyProvider({
 							tokensPerSecond: readiness.tokensPerSecond,
 						});
 						const parentContext = compilePathTo(parentId);
-						const logprobSeed = extractLatestUserSeed(parentContext);
-						let tokenIndex = seedTokens.length;
 						const stream = streamText({
 							model: dummyProvider.chatModel(readiness.modelId),
 							messages: toModelMessages(parentContext, seedText || undefined),
 							abortSignal: abortController.signal,
 						});
-						for await (const part of stream.fullStream) {
-							if (part.type === "reasoning-delta" && part.text) {
-								const tokenLogprob = {
-									...generateFakeLogprobs(part.text, readiness.modelId, {
-										seed: logprobSeed,
-										tokenIndex,
-									}),
-									segment: "reasoning" as const,
-								};
-								tokenIndex += 1;
-								appendToNode(assistantId, {
-									reasoning: part.text,
-									tokenLogprobs: [tokenLogprob],
-								});
-							}
-							if (part.type === "text-delta" && part.text) {
-								const tokenLogprob = generateFakeLogprobs(
-									part.text,
-									readiness.modelId,
-									{ seed: logprobSeed, tokenIndex },
-								);
-								tokenIndex += 1;
-								appendToNode(assistantId, {
-									content: part.text,
-									tokenLogprobs: [tokenLogprob],
-								});
-							}
-							if (part.type === "error") {
-								throw new Error(
-									typeof part.error === "string"
-										? part.error
-										: part.error instanceof Error
-											? part.error.message
-											: "Failed to stream response",
-								);
-							}
-						}
+						await processFullStream(stream.fullStream, {
+							append: (delta) => appendToNode(assistantId, delta),
+						});
 						setNodeStatus(assistantId, "final");
 					} else {
 						// OpenAI-compatible provider

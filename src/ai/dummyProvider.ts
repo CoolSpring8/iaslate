@@ -1,4 +1,5 @@
 import type {
+	JSONValue,
 	LanguageModelV2,
 	LanguageModelV2CallOptions,
 	LanguageModelV2CallWarning,
@@ -58,7 +59,7 @@ const FAKE_ALTERNATIVES_POOL = [
 	"?",
 ] as const;
 
-export const DUMMY_MODELS = [
+const DUMMY_MODELS = [
 	{
 		id: "markdown-stress-tester",
 		name: "Markdown Stress Tester",
@@ -198,12 +199,15 @@ const createSeededRng = (seed: number) => {
 const pickFrom = <T>(items: readonly T[], rng: () => number) =>
 	items[Math.floor(rng() * items.length)]!;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null;
+
 /**
  * Generate fake logprobs for a text chunk.
  * Models in MODELS_WITH_VARIED_LOGPROBS get random probabilities and alternatives.
  * Other models get probability=1.0 with no alternatives.
  */
-export const generateFakeLogprobs = (
+const generateFakeLogprobs = (
 	token: string,
 	modelId: string,
 	options?: { seed?: string; tokenIndex?: number },
@@ -302,6 +306,55 @@ export const generateFakeLogprobs = (
 		alternatives: normalizedAlternatives,
 	};
 };
+
+type DummyProviderOptions = {
+	logprobSeed?: string;
+	tokenIndexOffset?: number;
+};
+
+const readDummyProviderOptions = (options: unknown): DummyProviderOptions => {
+	if (!isRecord(options)) {
+		return {};
+	}
+	const entry = options[DUMMY_PROVIDER_NAME];
+	if (!isRecord(entry)) {
+		return {};
+	}
+	const logprobSeed =
+		typeof entry["logprobSeed"] === "string" ? entry["logprobSeed"] : undefined;
+	const tokenIndexOffset =
+		typeof entry["tokenIndexOffset"] === "number"
+			? entry["tokenIndexOffset"]
+			: undefined;
+	return { logprobSeed, tokenIndexOffset };
+};
+
+type DummyTokenLogprobJson = {
+	token: string;
+	probability?: number;
+	segment?: "content" | "reasoning";
+	alternatives: Array<{ token: string; probability: number }>;
+};
+
+const toDummyTokenLogprobJson = (
+	tokenLogprob: TokenLogprob,
+): DummyTokenLogprobJson => ({
+	token: tokenLogprob.token,
+	...(typeof tokenLogprob.probability === "number"
+		? { probability: tokenLogprob.probability }
+		: {}),
+	...(tokenLogprob.segment ? { segment: tokenLogprob.segment } : {}),
+	alternatives: tokenLogprob.alternatives.map((alternative) => ({
+		token: alternative.token,
+		probability: alternative.probability,
+	})),
+});
+
+const toDummyProviderMetadata = (tokenLogprobs: TokenLogprob[]) => ({
+	[DUMMY_PROVIDER_NAME]: {
+		tokenLogprobs: tokenLogprobs.map(toDummyTokenLogprobJson) as JSONValue,
+	},
+});
 
 const clampTokensPerSecond = (value?: number) => {
 	const numeric = Number(value);
@@ -419,6 +472,20 @@ class DummyLanguageModel implements LanguageModelV2 {
 		const warnings = this.buildWarnings(options);
 		const { contentText, reasoningText } = this.buildResponseParts(prompt);
 		const usage = this.buildUsage(prompt, contentText, reasoningText);
+		const { logprobSeed, tokenIndexOffset } = readDummyProviderOptions(
+			options.providerOptions,
+		);
+		const resolvedLogprobSeed =
+			logprobSeed ??
+			(this.callMode === "completion"
+				? extractSingleUserPromptText(prompt) ?? extractLatestUserText(prompt)
+				: extractLatestUserText(prompt));
+		let tokenIndex =
+			typeof tokenIndexOffset === "number" && Number.isFinite(tokenIndexOffset)
+				? Math.max(0, Math.floor(tokenIndexOffset))
+				: this.callMode === "completion"
+					? 0
+					: chunkText(extractTrailingAssistantText(prompt) ?? "").length;
 		const textId = this.idGenerator();
 		const reasoningId = reasoningText ? this.idGenerator() : null;
 		const delay = 1000 / this.tokensPerSecond;
@@ -471,10 +538,19 @@ class DummyLanguageModel implements LanguageModelV2 {
 							if (abortSignal?.aborted) {
 								throw abortError();
 							}
+							const tokenLogprob: TokenLogprob = {
+								...generateFakeLogprobs(chunk, this.modelId, {
+									seed: resolvedLogprobSeed,
+									tokenIndex,
+								}),
+								segment: "reasoning",
+							};
+							tokenIndex += 1;
 							controller.enqueue({
 								type: "reasoning-delta",
 								id: reasoningId,
 								delta: chunk,
+								providerMetadata: toDummyProviderMetadata([tokenLogprob]),
 							});
 							await sleepOrAbort();
 						}
@@ -486,10 +562,16 @@ class DummyLanguageModel implements LanguageModelV2 {
 						if (abortSignal?.aborted) {
 							throw abortError();
 						}
+						const tokenLogprob = generateFakeLogprobs(chunk, this.modelId, {
+							seed: resolvedLogprobSeed,
+							tokenIndex,
+						});
+						tokenIndex += 1;
 						controller.enqueue({
 							type: "text-delta",
 							id: textId,
 							delta: chunk,
+							providerMetadata: toDummyProviderMetadata([tokenLogprob]),
 						});
 						await sleepOrAbort();
 					}

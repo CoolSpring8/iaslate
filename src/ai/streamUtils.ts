@@ -6,6 +6,7 @@ type StreamPart = {
 	text?: string;
 	rawValue?: unknown;
 	error?: unknown;
+	providerMetadata?: unknown;
 };
 
 type StreamAppender = (delta: {
@@ -21,6 +22,26 @@ const toErrorMessage = (error: unknown) =>
 			? error.message
 			: "Failed to stream response";
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null;
+
+const extractTokenLogprobsFromProviderMetadata = (
+	providerMetadata: unknown,
+): TokenLogprob[] | undefined => {
+	if (!isRecord(providerMetadata)) {
+		return undefined;
+	}
+	const dummyEntry = providerMetadata["dummy"];
+	if (!isRecord(dummyEntry)) {
+		return undefined;
+	}
+	const tokenLogprobs = dummyEntry["tokenLogprobs"];
+	if (!Array.isArray(tokenLogprobs) || tokenLogprobs.length === 0) {
+		return undefined;
+	}
+	return tokenLogprobs as TokenLogprob[];
+};
+
 export const processFullStream = async (
 	fullStream: AsyncIterable<StreamPart>,
 	{
@@ -32,20 +53,41 @@ export const processFullStream = async (
 	},
 ) => {
 	for await (const part of fullStream) {
+		if (part.type === "error") {
+			throw new Error(toErrorMessage(part.error));
+		}
+
+		const delta: {
+			content?: string;
+			reasoning?: string;
+			tokenLogprobs?: TokenLogprob[];
+		} = {};
+
 		if (part.type === "text-delta" && part.text) {
-			append({ content: part.text });
+			delta.content = part.text;
 		}
 		if (part.type === "reasoning-delta" && part.text) {
-			append({ reasoning: part.text });
+			delta.reasoning = part.text;
 		}
 		if (part.type === "raw" && parseRawChunk) {
 			const chunk = parseRawChunk(part.rawValue);
 			if (chunk?.tokenLogprobs?.length) {
-				append({ tokenLogprobs: chunk.tokenLogprobs });
+				delta.tokenLogprobs = chunk.tokenLogprobs;
 			}
 		}
-		if (part.type === "error") {
-			throw new Error(toErrorMessage(part.error));
+
+		const metadataTokenLogprobs = extractTokenLogprobsFromProviderMetadata(
+			part.providerMetadata,
+		);
+		if (metadataTokenLogprobs?.length) {
+			delta.tokenLogprobs = [
+				...(delta.tokenLogprobs ?? []),
+				...metadataTokenLogprobs,
+			];
+		}
+
+		if (delta.content || delta.reasoning || delta.tokenLogprobs?.length) {
+			append(delta);
 		}
 	}
 };
