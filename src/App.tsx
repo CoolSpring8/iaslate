@@ -5,9 +5,9 @@ import { Toaster, toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { buildOpenAICompatibleProvider } from "./ai/openaiCompatible";
 import ChatView from "./components/ChatView";
-import DiagramView from "./components/DiagramView";
 import Header from "./components/Header";
 import SettingsModal from "./components/SettingsModal";
+import SidePanel from "./components/SidePanel";
 import SnapshotIO from "./components/SnapshotIO";
 import TextCompletionView from "./components/TextCompletionView";
 import { useBeforeUnloadGuard } from "./hooks/useBeforeUnloadGuard";
@@ -240,8 +240,9 @@ const App = () => {
 								/>
 							</div>
 							{showChatDiagram ? (
-								<div className="min-w-0 min-h-0 flex-1 overflow-hidden border-l border-solid border-slate-200 dark:border-slate-800 px-2 py-2">
-									<DiagramView
+								<div className="min-w-0 min-h-0 flex-1 overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.04)] dark:shadow-[-2px_0_8px_rgba(0,0,0,0.2)]">
+									<SidePanel
+										providerKind={providerKind}
 										onNodeDoubleClick={activateThread}
 										onSetActiveNode={activateThread}
 										onDuplicateFromNode={duplicateFromNode}

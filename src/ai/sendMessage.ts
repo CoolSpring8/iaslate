@@ -2,6 +2,7 @@ import { type ModelMessage, streamText } from "ai";
 import type { StreamManager } from "../hooks/useStreamManager";
 import type {
 	ChatProviderReady,
+	GenerationParams,
 	Message,
 	MessageContent,
 	TokenLogprob,
@@ -39,6 +40,7 @@ export interface SendMessageContext {
 	streamManager: StreamManager;
 	setIsGenerating: (value: boolean) => void;
 	defaultSystemPrompt: string;
+	generationParams?: GenerationParams;
 }
 
 const hasMessageContent = (content: MessageContent) => {
@@ -66,6 +68,7 @@ export const sendMessage = async (
 		streamManager,
 		setIsGenerating,
 		defaultSystemPrompt,
+		generationParams,
 	}: SendMessageContext,
 ) => {
 	const hasContent = hasMessageContent(promptContent);
@@ -122,7 +125,10 @@ export const sendMessage = async (
 			const stream = streamText({
 				model: provider.getBuiltInChatModel(),
 				messages: modelMessages,
-				temperature: 0.3,
+				temperature: generationParams?.temperature ?? 0.7,
+				...(generationParams?.maxTokens && {
+					maxTokens: generationParams.maxTokens,
+				}),
 				abortSignal: abortController.signal,
 			});
 			await processFullStream(stream.fullStream, {
@@ -139,7 +145,7 @@ export const sendMessage = async (
 					role: m.role as "system" | "user" | "assistant",
 					content: m.content,
 				})) as ModelMessage[],
-				temperature: 0.3,
+				temperature: generationParams?.temperature ?? 0.7,
 				abortSignal: abortController.signal,
 			});
 			await processFullStream(stream.fullStream, {
@@ -148,15 +154,24 @@ export const sendMessage = async (
 			setNodeStatus(assistantId, "final");
 		} else {
 			const modelMessages = toModelMessages(filteredContext);
+			const enableLogprobs = generationParams?.logprobs !== false;
 			const stream = streamText({
 				model: provider.openAIProvider.chatModel(provider.modelId),
 				messages: modelMessages,
-				temperature: 0.3,
+				temperature: generationParams?.temperature ?? 0.7,
+				...(generationParams?.topP !== undefined && {
+					topP: generationParams.topP,
+				}),
+				...(generationParams?.maxTokens && {
+					maxTokens: generationParams.maxTokens,
+				}),
 				abortSignal: abortController.signal,
-				includeRawChunks: true,
-				providerOptions: buildChatLogprobOptions(
-					OPENAI_COMPATIBLE_PROVIDER_NAME,
-				),
+				includeRawChunks: enableLogprobs,
+				...(enableLogprobs && {
+					providerOptions: buildChatLogprobOptions(
+						OPENAI_COMPATIBLE_PROVIDER_NAME,
+					),
+				}),
 			});
 			await processFullStream(stream.fullStream, {
 				append: (delta) => appendToNode(assistantId, delta),

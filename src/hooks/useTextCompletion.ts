@@ -9,6 +9,7 @@ import {
 	parseCompletionLogprobsChunk,
 } from "../ai/openaiLogprobs";
 import { processFullStream } from "../ai/streamUtils";
+import { useSettingsStore } from "../state/useSettingsStore";
 import type {
 	CompletionProviderReady,
 	TokenAlternative,
@@ -47,6 +48,7 @@ export const useTextCompletion = ({
 			}
 			const logprobSeed = seedRef.current;
 			let tokenIndex = startTokenIndex;
+			const generationParams = useSettingsStore.getState().generationParams;
 			setIsGenerating(true);
 			try {
 				if (readiness.kind === "dummy") {
@@ -79,15 +81,24 @@ export const useTextCompletion = ({
 					});
 				} else {
 					// OpenAI-compatible provider
+					const enableLogprobs = generationParams?.logprobs !== false;
 					const stream = streamText({
 						model: readiness.openAIProvider.completionModel(readiness.modelId),
 						prompt: seedText,
-						temperature: 0.3,
+						temperature: generationParams?.temperature ?? 0.7,
+						...(generationParams?.topP !== undefined && {
+							topP: generationParams.topP,
+						}),
+						...(generationParams?.maxTokens && {
+							maxTokens: generationParams.maxTokens,
+						}),
 						abortSignal: abortController.signal,
-						includeRawChunks: true,
-						providerOptions: buildCompletionLogprobOptions(
-							OPENAI_COMPATIBLE_PROVIDER_NAME,
-						),
+						includeRawChunks: enableLogprobs,
+						...(enableLogprobs && {
+							providerOptions: buildCompletionLogprobOptions(
+								OPENAI_COMPATIBLE_PROVIDER_NAME,
+							),
+						}),
 					});
 					await processFullStream(stream.fullStream, {
 						append: (delta) => {

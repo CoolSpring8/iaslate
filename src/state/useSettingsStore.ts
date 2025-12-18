@@ -5,7 +5,12 @@ import { create } from "zustand";
 import { DUMMY_PROVIDER_NAME, fetchDummyModels } from "../ai/dummyProvider";
 import { fetchOpenAICompatibleModels } from "../ai/openaiCompatible";
 import { settingsKey } from "../constants/storageKeys";
-import type { BuiltInAvailability, ModelInfo, ProviderEntry } from "../types";
+import type {
+	BuiltInAvailability,
+	GenerationParams,
+	ModelInfo,
+	ProviderEntry,
+} from "../types";
 
 import { v4 as uuidv4 } from "uuid";
 
@@ -17,6 +22,13 @@ export const HEATMAP_THEMES = [
 
 export type HeatmapTheme = (typeof HEATMAP_THEMES)[number];
 
+const DEFAULT_GENERATION_PARAMS: GenerationParams = {
+	temperature: 0.7,
+	topP: 1,
+	maxTokens: undefined,
+	logprobs: true,
+};
+
 type StoredSettings = {
 	providers: ProviderEntry[];
 	activeProviderId: string | null;
@@ -24,6 +36,7 @@ type StoredSettings = {
 	enableTokenHeatmap: boolean;
 	heatmapTheme: HeatmapTheme;
 	showChatDiagram?: boolean;
+	generationParams?: GenerationParams;
 	// Legacy fields retained for backward compatibility; they are ignored in favor of per-provider storage
 	models?: ModelInfo[];
 	activeModel?: string | null;
@@ -36,6 +49,7 @@ interface SettingsState {
 	enableTokenHeatmap: boolean;
 	heatmapTheme: HeatmapTheme;
 	showChatDiagram: boolean;
+	generationParams: GenerationParams;
 	builtInAvailability: BuiltInAvailability;
 	isHydrated: boolean;
 	setActiveModel: (model: string | null) => void;
@@ -43,6 +57,7 @@ interface SettingsState {
 	setEnableTokenHeatmap: (enabled: boolean) => Promise<void>;
 	setHeatmapTheme: (theme: HeatmapTheme) => Promise<void>;
 	setShowChatDiagram: (show: boolean) => Promise<void>;
+	setGenerationParams: (params: Partial<GenerationParams>) => Promise<void>;
 	setBuiltInAvailability: (availability: BuiltInAvailability) => void;
 	refreshBuiltInAvailability: () => Promise<void>;
 	hydrate: () => Promise<void>;
@@ -88,6 +103,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			enableTokenHeatmap,
 			heatmapTheme,
 			showChatDiagram,
+			generationParams,
 		} = get();
 		await setValue(settingsKey, {
 			providers,
@@ -96,6 +112,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			enableTokenHeatmap,
 			heatmapTheme,
 			showChatDiagram,
+			generationParams,
 			...overrides,
 		});
 	};
@@ -107,6 +124,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 		enableTokenHeatmap: false,
 		heatmapTheme: "traffic-light",
 		showChatDiagram: true,
+		generationParams: DEFAULT_GENERATION_PARAMS,
 		builtInAvailability: "unknown",
 		isHydrated: false,
 		setActiveModel: (model) => {
@@ -157,6 +175,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			set({ showChatDiagram: show });
 			await persistSettings({ showChatDiagram: show });
 		},
+		setGenerationParams: async (params) => {
+			const { generationParams } = get();
+			const updated = { ...generationParams, ...params };
+			set({ generationParams: updated });
+			await persistSettings({ generationParams: updated });
+		},
 		setBuiltInAvailability: (availability) =>
 			set({ builtInAvailability: availability }),
 		refreshBuiltInAvailability: async () => {
@@ -180,6 +204,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 					enableTokenHeatmap: storedSettings.enableTokenHeatmap ?? false,
 					heatmapTheme: storedSettings.heatmapTheme ?? "traffic-light",
 					showChatDiagram: storedSettings.showChatDiagram ?? true,
+					generationParams: {
+						...DEFAULT_GENERATION_PARAMS,
+						...storedSettings.generationParams,
+					},
 					isHydrated: true,
 				});
 			} else {

@@ -11,6 +11,7 @@ import {
 } from "../ai/openaiLogprobs";
 import { sendMessage } from "../ai/sendMessage";
 import { processFullStream } from "../ai/streamUtils";
+import { useSettingsStore } from "../state/useSettingsStore";
 import { useConversationTree } from "../tree/useConversationTree";
 import type {
 	ChatProviderReady,
@@ -231,6 +232,7 @@ export const useConversationController = ({
 			if (!chatProvider) {
 				return;
 			}
+			const generationParams = useSettingsStore.getState().generationParams;
 			try {
 				await sendMessage(promptContent, {
 					provider: chatProvider,
@@ -246,6 +248,7 @@ export const useConversationController = ({
 					streamManager,
 					setIsGenerating,
 					defaultSystemPrompt,
+					generationParams,
 				});
 			} catch (error) {
 				console.error(error);

@@ -31,10 +31,11 @@ const rowGap = 80;
 
 const nodeStyleBase = {
 	border: "1px solid #e2e8f0",
-	borderRadius: 8,
-	padding: 8,
+	borderRadius: 10,
+	padding: 10,
 	background: "#fff",
 	width: boxSize.width,
+	boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)",
 };
 
 const DiagramView = ({
@@ -345,6 +346,12 @@ const DiagramView = ({
 						nodes={layoutNodes}
 						edges={layoutEdges}
 						fitView
+						fitViewOptions={{
+							maxZoom: 1,
+							padding: 0.2,
+						}}
+						minZoom={0.1}
+						maxZoom={1.5}
 						nodesConnectable
 						nodesDraggable={false}
 						zoomOnDoubleClick={false}

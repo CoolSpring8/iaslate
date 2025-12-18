@@ -88,3 +88,13 @@ export type CompletionProviderReady = Extract<
 	ChatProviderReady,
 	{ kind: "openai-compatible" } | { kind: "dummy" }
 >;
+
+export interface GenerationParams {
+	temperature?: number;
+	topP?: number;
+	minP?: number;
+	topK?: number;
+	repetitionPenalty?: number;
+	maxTokens?: number;
+	logprobs?: boolean;
+}
