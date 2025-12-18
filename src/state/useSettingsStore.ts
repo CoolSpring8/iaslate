@@ -2,7 +2,7 @@ import { builtInAI } from "@built-in-ai/core";
 import { get as getValue, set as setValue } from "idb-keyval";
 import { toast } from "sonner";
 import { create } from "zustand";
-import { fetchDummyModels } from "../ai/dummyProvider";
+import { DUMMY_PROVIDER_NAME, fetchDummyModels } from "../ai/dummyProvider";
 import { fetchOpenAICompatibleModels } from "../ai/openaiCompatible";
 import { settingsKey } from "../constants/storageKeys";
 import type { BuiltInAvailability, ModelInfo, ProviderEntry } from "../types";
@@ -55,6 +55,26 @@ interface SettingsState {
 		force?: boolean;
 	}) => Promise<ModelInfo[]>;
 }
+
+const isDummyModels = (models: ProviderEntry["models"]) =>
+	Boolean(
+		models &&
+			models.length > 0 &&
+			models.every((model) => model.owned_by === DUMMY_PROVIDER_NAME),
+	);
+
+const resolveActiveModelId = (
+	models: ProviderEntry["models"],
+	activeModelId: ProviderEntry["activeModelId"],
+) => {
+	if (!models || models.length === 0) {
+		return null;
+	}
+	if (activeModelId && models.some((model) => model.id === activeModelId)) {
+		return activeModelId;
+	}
+	return models.at(0)?.id ?? null;
+};
 
 export const useSettingsStore = create<SettingsState>((set, get) => {
 	const persistSettings = async (overrides: Partial<StoredSettings> = {}) => {
@@ -176,8 +196,86 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 		},
 		updateProvider: async (id, updates) => {
 			const { providers } = get();
-			const newProviders = providers.map((p) =>
-				p.id === id ? { ...p, ...updates } : p,
+			const existingProvider = providers.find((provider) => provider.id === id);
+			if (!existingProvider) {
+				return;
+			}
+
+			const nextKind = updates.kind ?? existingProvider.kind;
+			const didKindChange = nextKind !== existingProvider.kind;
+
+			const nextProvider: ProviderEntry = {
+				...existingProvider,
+				...updates,
+				config: updates.config ?? existingProvider.config,
+			};
+
+			if (didKindChange) {
+				if (nextKind === "dummy") {
+					const fetchedModels = await fetchDummyModels();
+					nextProvider.models = fetchedModels;
+					nextProvider.activeModelId = resolveActiveModelId(
+						fetchedModels,
+						nextProvider.activeModelId,
+					);
+				}
+
+				if (nextKind === "built-in") {
+					nextProvider.models = [];
+					nextProvider.activeModelId = null;
+				}
+
+				if (nextKind === "openai-compatible") {
+					const cachedModels = isDummyModels(existingProvider.models)
+						? []
+						: existingProvider.models ?? [];
+					const cachedActiveModelId = resolveActiveModelId(
+						cachedModels,
+						existingProvider.activeModelId ?? null,
+					);
+
+					nextProvider.models = cachedModels;
+					nextProvider.activeModelId = cachedActiveModelId;
+
+					const baseURL = nextProvider.config.baseURL?.trim();
+					if (baseURL) {
+						try {
+							const fetchedModels = await fetchOpenAICompatibleModels({
+								baseURL,
+								apiKey: nextProvider.config.apiKey ?? "",
+							});
+							nextProvider.models = fetchedModels;
+							nextProvider.activeModelId = resolveActiveModelId(
+								fetchedModels,
+								nextProvider.activeModelId,
+							);
+						} catch (error) {
+							console.error(error);
+							if (cachedModels.length > 0) {
+								toast.error("Sync failed, using cached model list");
+							} else {
+								toast.error(
+									error instanceof Error
+										? error.message
+										: "Failed to fetch models from API",
+								);
+							}
+							nextProvider.activeModelId = resolveActiveModelId(
+								nextProvider.models,
+								nextProvider.activeModelId,
+							);
+						}
+					} else {
+						nextProvider.activeModelId = resolveActiveModelId(
+							nextProvider.models,
+							nextProvider.activeModelId,
+						);
+					}
+				}
+			}
+
+			const newProviders = providers.map((provider) =>
+				provider.id === id ? nextProvider : provider,
 			);
 			set({ providers: newProviders });
 
