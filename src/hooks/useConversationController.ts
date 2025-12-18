@@ -464,6 +464,20 @@ export const useConversationController = ({
 							abortSignal: abortController.signal,
 						});
 						for await (const part of stream.fullStream) {
+							if (part.type === "reasoning-delta" && part.text) {
+								const tokenLogprob = {
+									...generateFakeLogprobs(part.text, readiness.modelId, {
+										seed: logprobSeed,
+										tokenIndex,
+									}),
+									segment: "reasoning" as const,
+								};
+								tokenIndex += 1;
+								appendToNode(assistantId, {
+									reasoning: part.text,
+									tokenLogprobs: [tokenLogprob],
+								});
+							}
 							if (part.type === "text-delta" && part.text) {
 								const tokenLogprob = generateFakeLogprobs(
 									part.text,

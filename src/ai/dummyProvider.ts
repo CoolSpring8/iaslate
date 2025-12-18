@@ -65,6 +65,11 @@ export const DUMMY_MODELS = [
 		description: "Streams structured Markdown elements to test rendering.",
 	},
 	{
+		id: "reasoning-stream",
+		name: "Reasoning Stream",
+		description: "Streams reasoning_content before the final answer.",
+	},
+	{
 		id: "corporate-ipm",
 		name: "Corporate IPM",
 		description: "Generates corporate buzzword text.",
@@ -369,16 +374,19 @@ class DummyLanguageModel implements LanguageModelV2 {
 	readonly provider = DUMMY_PROVIDER_NAME;
 	readonly modelId: DummyModelId;
 	readonly supportedUrls: Record<string, RegExp[]> = {};
+	private readonly callMode: "chat" | "completion";
 
 	private readonly tokensPerSecond: number;
 	private readonly idGenerator: () => string;
 
 	constructor(
 		modelId: DummyModelId,
+		callMode: "chat" | "completion",
 		settings: DummyProviderSettings,
 		idGenerator = generateId,
 	) {
 		this.modelId = modelId;
+		this.callMode = callMode;
 		this.tokensPerSecond = clampTokensPerSecond(settings.tokensPerSecond);
 		this.idGenerator = idGenerator;
 	}
@@ -386,11 +394,15 @@ class DummyLanguageModel implements LanguageModelV2 {
 	async doGenerate(options: LanguageModelV2CallOptions) {
 		const { prompt } = options;
 		const warnings = this.buildWarnings(options);
-		const contentText = this.buildResponse(prompt);
-		const usage = this.buildUsage(prompt, contentText);
-		const content: LanguageModelV2Content[] = contentText
-			? [{ type: "text", text: contentText }]
-			: [];
+		const { contentText, reasoningText } = this.buildResponseParts(prompt);
+		const usage = this.buildUsage(prompt, contentText, reasoningText);
+		const content: LanguageModelV2Content[] = [];
+		if (reasoningText) {
+			content.push({ type: "reasoning", text: reasoningText });
+		}
+		if (contentText) {
+			content.push({ type: "text", text: contentText });
+		}
 
 		return {
 			content,
@@ -398,18 +410,20 @@ class DummyLanguageModel implements LanguageModelV2 {
 			usage,
 			warnings,
 			request: { body: { modelId: this.modelId } },
-			response: { body: { content: contentText } },
+			response: { body: { content: contentText, reasoning: reasoningText } },
 		};
 	}
 
 	async doStream(options: LanguageModelV2CallOptions) {
 		const { prompt, abortSignal } = options;
 		const warnings = this.buildWarnings(options);
-		const contentText = this.buildResponse(prompt);
-		const usage = this.buildUsage(prompt, contentText);
+		const { contentText, reasoningText } = this.buildResponseParts(prompt);
+		const usage = this.buildUsage(prompt, contentText, reasoningText);
 		const textId = this.idGenerator();
+		const reasoningId = reasoningText ? this.idGenerator() : null;
 		const delay = 1000 / this.tokensPerSecond;
-		const chunks = chunkText(contentText);
+		const reasoningChunks = reasoningText ? chunkText(reasoningText) : [];
+		const textChunks = chunkText(contentText);
 
 		const stream = new ReadableStream<LanguageModelV2StreamPart>({
 			start: async (controller) => {
@@ -429,6 +443,8 @@ class DummyLanguageModel implements LanguageModelV2 {
 							});
 						})
 					: null;
+				// Prevent unhandled rejections if the stream completes before we ever await `abortPromise`.
+				void abortPromise?.catch(() => {});
 
 				try {
 					if (abortSignal?.aborted) {
@@ -437,9 +453,36 @@ class DummyLanguageModel implements LanguageModelV2 {
 					}
 
 					controller.enqueue({ type: "stream-start", warnings });
-					controller.enqueue({ type: "text-start", id: textId });
 
-					for (const chunk of chunks) {
+					const sleepOrAbort = async () => {
+						if (delay <= 0) {
+							return;
+						}
+						if (abortPromise) {
+							await Promise.race([sleep(delay), abortPromise]);
+							return;
+						}
+						await sleep(delay);
+					};
+
+					if (reasoningId) {
+						controller.enqueue({ type: "reasoning-start", id: reasoningId });
+						for (const chunk of reasoningChunks) {
+							if (abortSignal?.aborted) {
+								throw abortError();
+							}
+							controller.enqueue({
+								type: "reasoning-delta",
+								id: reasoningId,
+								delta: chunk,
+							});
+							await sleepOrAbort();
+						}
+						controller.enqueue({ type: "reasoning-end", id: reasoningId });
+					}
+
+					controller.enqueue({ type: "text-start", id: textId });
+					for (const chunk of textChunks) {
 						if (abortSignal?.aborted) {
 							throw abortError();
 						}
@@ -448,13 +491,7 @@ class DummyLanguageModel implements LanguageModelV2 {
 							id: textId,
 							delta: chunk,
 						});
-						if (delay > 0) {
-							if (abortPromise) {
-								await Promise.race([sleep(delay), abortPromise]);
-							} else {
-								await sleep(delay);
-							}
-						}
+						await sleepOrAbort();
 					}
 
 					if (abortSignal?.aborted) {
@@ -516,9 +553,11 @@ class DummyLanguageModel implements LanguageModelV2 {
 	private buildUsage(
 		prompt: LanguageModelV2Prompt,
 		content: string,
+		reasoning?: string,
 	): LanguageModelV2Usage {
 		const inputLength = chunkText(extractLatestUserText(prompt)).length;
-		const outputLength = chunkText(content).length;
+		const outputLength =
+			chunkText(content).length + (reasoning ? chunkText(reasoning).length : 0);
 		return {
 			inputTokens: inputLength,
 			outputTokens: outputLength,
@@ -537,6 +576,15 @@ class DummyLanguageModel implements LanguageModelV2 {
 					"- Item one\n- Item two\n- Item three\n\n",
 					"1. First\n2. Second\n3. Third\n",
 				].join("");
+
+			case "reasoning-stream":
+				return [
+					"Here’s the final answer (with reasoning streamed above).",
+					latestUserText ? `You said: “${latestUserText}”.` : "",
+					"Dummy providers are great for testing UI behaviors like streaming, cancel, and token overlays without relying on a real model.",
+				]
+					.filter(Boolean)
+					.join("\n\n");
 
 			case "corporate-ipm": {
 				const rng = createSeededRng(
@@ -740,12 +788,14 @@ class DummyLanguageModel implements LanguageModelV2 {
 		const latestUserText = extractLatestUserText(prompt);
 
 		if (assistantPrefix === null) {
-			const completionPrefix = extractSingleUserPromptText(prompt);
-			if (completionPrefix !== null) {
-				return this.buildContinuationFromPrefix(
-					completionPrefix,
-					completionPrefix,
-				);
+			if (this.callMode === "completion") {
+				const completionPrefix = extractSingleUserPromptText(prompt);
+				if (completionPrefix !== null) {
+					return this.buildContinuationFromPrefix(
+						completionPrefix,
+						completionPrefix,
+					);
+				}
 			}
 			return this.buildScratchResponse(latestUserText);
 		}
@@ -760,6 +810,32 @@ class DummyLanguageModel implements LanguageModelV2 {
 		}
 
 		return this.buildContinuationFromPrefix(latestUserText, assistantPrefix);
+	}
+
+	private buildReasoningStreamResponse(prompt: LanguageModelV2Prompt) {
+		const assistantPrefix = extractTrailingAssistantText(prompt);
+		if (this.callMode === "completion" || assistantPrefix) {
+			return { reasoningText: "", contentText: this.buildResponse(prompt) };
+		}
+
+		const latestUserText = extractLatestUserText(prompt);
+		const reasoningText = [
+			"Goal: produce a helpful final answer.",
+			`Input: ${latestUserText || "(no user text)"}`,
+			"Approach:",
+			"- Identify intent",
+			"- Gather constraints",
+			"- Produce a concise answer",
+		].join("\n");
+
+		return { reasoningText, contentText: this.buildResponse(prompt) };
+	}
+
+	private buildResponseParts(prompt: LanguageModelV2Prompt) {
+		if (this.modelId === "reasoning-stream") {
+			return this.buildReasoningStreamResponse(prompt);
+		}
+		return { reasoningText: "", contentText: this.buildResponse(prompt) };
 	}
 }
 
@@ -777,16 +853,17 @@ export const createDummyProvider = (
 		});
 	};
 
-	const createModel = (modelId: string) =>
-		new DummyLanguageModel(validateModelId(modelId), {
+	const createModel = (modelId: string, callMode: "chat" | "completion") =>
+		new DummyLanguageModel(validateModelId(modelId), callMode, {
 			tokensPerSecond: settings.tokensPerSecond,
 		});
 
-	const provider = ((modelId: string) => createModel(modelId)) as DummyProvider;
+	const provider = ((modelId: string) =>
+		createModel(modelId, "chat")) as DummyProvider;
 
-	provider.languageModel = (modelId) => createModel(modelId);
-	provider.chatModel = (modelId) => createModel(modelId);
-	provider.completionModel = (modelId) => createModel(modelId);
+	provider.languageModel = (modelId) => createModel(modelId, "chat");
+	provider.chatModel = (modelId) => createModel(modelId, "chat");
+	provider.completionModel = (modelId) => createModel(modelId, "completion");
 	provider.textEmbeddingModel = (modelId) => {
 		throw new NoSuchModelError({
 			modelId,
