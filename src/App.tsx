@@ -89,6 +89,7 @@ const App = () => {
 		getBuiltInChatModel,
 		baseURL: activeProvider?.config.baseURL ?? "",
 		apiKey: activeProvider?.config.apiKey ?? "",
+		tokensPerSecond: activeProvider?.config.tokensPerSecond,
 	});
 
 	const {
@@ -182,6 +183,9 @@ const App = () => {
 		resetComposerState();
 	}, [abortActiveStreams, cancel, resetComposerState]);
 
+	const isModelSelectionSupported =
+		providerKind === "openai-compatible" || providerKind === "dummy";
+
 	return (
 		<SnapshotIO
 			exportSnapshot={exportSnapshot}
@@ -194,9 +198,9 @@ const App = () => {
 						models={models}
 						activeModel={activeModel}
 						onModelChange={setActiveModel}
-						modelSelectorDisabled={providerKind !== "openai-compatible"}
+						modelSelectorDisabled={!isModelSelectionSupported}
 						modelPlaceholder={
-							providerKind === "openai-compatible"
+							isModelSelectionSupported
 								? "Select a model"
 								: "Built-in AI (no model list)"
 						}
@@ -238,9 +242,9 @@ const App = () => {
 						<TextCompletionView
 							value={textContent}
 							isGenerating={isTextGenerating}
-							isPredictDisabled={providerKind !== "openai-compatible"}
+							isPredictDisabled={!isModelSelectionSupported}
 							disabledReason={
-								providerKind !== "openai-compatible"
+								!isModelSelectionSupported
 									? "Built-in AI supports chat only"
 									: undefined
 							}

@@ -17,6 +17,7 @@ interface UseProviderReadinessOptions {
 	getBuiltInChatModel: () => LanguageModel;
 	baseURL: string;
 	apiKey: string;
+	tokensPerSecond?: number;
 }
 
 export const useProviderReadiness = ({
@@ -27,8 +28,20 @@ export const useProviderReadiness = ({
 	getBuiltInChatModel,
 	baseURL,
 	apiKey,
+	tokensPerSecond,
 }: UseProviderReadinessOptions) => {
 	const ensureChatReady = useCallback((): ChatProviderReady | null => {
+		if (providerKind === "dummy") {
+			if (!activeModel) {
+				toast.error("Select a model before sending");
+				return null;
+			}
+			return {
+				kind: "dummy",
+				modelId: activeModel,
+				tokensPerSecond: tokensPerSecond ?? 10,
+			};
+		}
 		if (providerKind === "openai-compatible") {
 			if (!activeModel) {
 				toast.error("Select a model before sending");
@@ -62,10 +75,22 @@ export const useProviderReadiness = ({
 		baseURL,
 		openAIProvider,
 		providerKind,
+		tokensPerSecond,
 	]);
 
 	const ensureCompletionReady =
 		useCallback((): CompletionProviderReady | null => {
+			if (providerKind === "dummy") {
+				if (!activeModel) {
+					toast.error("Select a model before predicting");
+					return null;
+				}
+				return {
+					kind: "dummy",
+					modelId: activeModel,
+					tokensPerSecond: tokensPerSecond ?? 10,
+				};
+			}
 			if (providerKind !== "openai-compatible") {
 				toast.error("Built-in AI supports chat only");
 				return null;
@@ -85,7 +110,14 @@ export const useProviderReadiness = ({
 				baseURL,
 				apiKey,
 			};
-		}, [activeModel, apiKey, baseURL, openAIProvider, providerKind]);
+		}, [
+			activeModel,
+			apiKey,
+			baseURL,
+			openAIProvider,
+			providerKind,
+			tokensPerSecond,
+		]);
 
 	return { ensureChatReady, ensureCompletionReady };
 };

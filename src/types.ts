@@ -39,7 +39,7 @@ export interface ModelInfo {
 	owned_by?: string;
 }
 
-export type ProviderKind = "openai-compatible" | "built-in";
+export type ProviderKind = "openai-compatible" | "built-in" | "dummy";
 
 export interface ProviderEntry {
 	id: string;
@@ -48,6 +48,7 @@ export interface ProviderEntry {
 	config: {
 		baseURL?: string;
 		apiKey?: string;
+		tokensPerSecond?: number;
 	};
 	models?: ModelInfo[];
 	activeModelId?: string | null;
@@ -76,9 +77,14 @@ export type ChatProviderReady =
 	| {
 			kind: "built-in";
 			getBuiltInChatModel: () => LanguageModel;
+	  }
+	| {
+			kind: "dummy";
+			modelId: string;
+			tokensPerSecond: number;
 	  };
 
 export type CompletionProviderReady = Extract<
 	ChatProviderReady,
-	{ kind: "openai-compatible" }
+	{ kind: "openai-compatible" } | { kind: "dummy" }
 >;

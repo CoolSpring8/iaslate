@@ -2,6 +2,7 @@ import { streamText } from "ai";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useImmer } from "use-immer";
+import { createDummyProvider } from "../ai/dummyProvider";
 import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "../ai/openaiCompatible";
 import {
 	buildCompletionLogprobOptions,
@@ -28,7 +29,7 @@ export const useTextCompletion = ({
 	const seedRef = useRef("");
 
 	const runGeneration = useCallback(
-		async (seedText: string, updateSeed = true) => {
+		async (seedText: string, updateSeed = true, startTokenIndex = 0) => {
 			const hasActiveGeneration =
 				abortControllerRef.current &&
 				abortControllerRef.current.signal.aborted === false;
@@ -44,31 +45,64 @@ export const useTextCompletion = ({
 			if (updateSeed) {
 				seedRef.current = seedText;
 			}
+			const logprobSeed = seedRef.current;
+			let tokenIndex = startTokenIndex;
 			setIsGenerating(true);
 			try {
-				const stream = streamText({
-					model: readiness.openAIProvider.completionModel(readiness.modelId),
-					prompt: seedText,
-					temperature: 0.3,
-					abortSignal: abortController.signal,
-					includeRawChunks: true,
-					providerOptions: buildCompletionLogprobOptions(
-						OPENAI_COMPATIBLE_PROVIDER_NAME,
-					),
-				});
-				await processFullStream(stream.fullStream, {
-					append: (delta) => {
-						if (delta.content) {
-							setTextContent((draft) => draft + delta.content!);
-						}
-						if (delta.tokenLogprobs?.length) {
-							setTokenLogprobs((draft) => {
-								draft.push(...delta.tokenLogprobs!);
-							});
-						}
-					},
-					parseRawChunk: parseCompletionLogprobsChunk,
-				});
+				if (readiness.kind === "dummy") {
+					// Dummy provider
+					const dummyProvider = createDummyProvider({
+						tokensPerSecond: readiness.tokensPerSecond,
+					});
+					const stream = streamText({
+						model: dummyProvider.completionModel(readiness.modelId),
+						prompt: seedText,
+						abortSignal: abortController.signal,
+						providerOptions: {
+							dummy: {
+								logprobSeed,
+								tokenIndexOffset: tokenIndex,
+							},
+						},
+					});
+					await processFullStream(stream.fullStream, {
+						append: (delta) => {
+							if (delta.content) {
+								setTextContent((draft) => draft + delta.content!);
+							}
+							if (delta.tokenLogprobs?.length) {
+								setTokenLogprobs((draft) => {
+									draft.push(...delta.tokenLogprobs!);
+								});
+							}
+						},
+					});
+				} else {
+					// OpenAI-compatible provider
+					const stream = streamText({
+						model: readiness.openAIProvider.completionModel(readiness.modelId),
+						prompt: seedText,
+						temperature: 0.3,
+						abortSignal: abortController.signal,
+						includeRawChunks: true,
+						providerOptions: buildCompletionLogprobOptions(
+							OPENAI_COMPATIBLE_PROVIDER_NAME,
+						),
+					});
+					await processFullStream(stream.fullStream, {
+						append: (delta) => {
+							if (delta.content) {
+								setTextContent((draft) => draft + delta.content!);
+							}
+							if (delta.tokenLogprobs?.length) {
+								setTokenLogprobs((draft) => {
+									draft.push(...delta.tokenLogprobs!);
+								});
+							}
+						},
+						parseRawChunk: parseCompletionLogprobsChunk,
+					});
+				}
 			} catch (error) {
 				if (abortController.signal.aborted) {
 					return;
@@ -121,11 +155,11 @@ export const useTextCompletion = ({
 				return draft;
 			});
 			// Keep existing probabilities: generate more without moving tokens into the seed.
-			await runGeneration(textContent, false);
+			await runGeneration(textContent, false, validTokenCount);
 		} else {
 			// Edits introduced a gap; treat the current text as the new seed.
 			setTokenLogprobs([]);
-			await runGeneration(textContent, true);
+			await runGeneration(textContent, true, 0);
 		}
 	}, [
 		isGenerating,
@@ -172,7 +206,7 @@ export const useTextCompletion = ({
 				replacement.token;
 			setTextContent(newSeed);
 			setTokenLogprobs([...prefixTokens, newTokenEntry]);
-			await runGeneration(newSeed, false);
+			await runGeneration(newSeed, false, prefixTokens.length + 1);
 		},
 		[
 			cancel,

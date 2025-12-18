@@ -2,6 +2,7 @@ import { streamText } from "ai";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import { createDummyProvider } from "../ai/dummyProvider";
 import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "../ai/openaiCompatible";
 import {
 	buildChatLogprobOptions,
@@ -371,8 +372,13 @@ export const useConversationController = ({
 			if (!readiness) {
 				return undefined;
 			}
-			if (readiness.kind !== "openai-compatible") {
-				toast.error("Token rerolls require an OpenAI-compatible provider");
+			if (
+				readiness.kind !== "openai-compatible" &&
+				readiness.kind !== "dummy"
+			) {
+				toast.error(
+					"Token rerolls are supported only by OpenAI-compatible and dummy providers",
+				);
 				return undefined;
 			}
 			if (isGenerating) {
@@ -427,24 +433,42 @@ export const useConversationController = ({
 			void (async () => {
 				try {
 					setIsGenerating(true);
-					const stream = streamText({
-						model: readiness.openAIProvider.chatModel(readiness.modelId),
-						messages: toModelMessages(
-							compilePathTo(parentId),
-							seedText || undefined,
-						),
-						temperature: 0.3,
-						abortSignal: abortController.signal,
-						includeRawChunks: true,
-						providerOptions: buildChatLogprobOptions(
-							OPENAI_COMPATIBLE_PROVIDER_NAME,
-						),
-					});
-					await processFullStream(stream.fullStream, {
-						append: (delta) => appendToNode(assistantId, delta),
-						parseRawChunk: parseChatLogprobsChunk,
-					});
-					setNodeStatus(assistantId, "final");
+					if (readiness.kind === "dummy") {
+						// Dummy provider
+						const dummyProvider = createDummyProvider({
+							tokensPerSecond: readiness.tokensPerSecond,
+						});
+						const parentContext = compilePathTo(parentId);
+						const stream = streamText({
+							model: dummyProvider.chatModel(readiness.modelId),
+							messages: toModelMessages(parentContext, seedText || undefined),
+							abortSignal: abortController.signal,
+						});
+						await processFullStream(stream.fullStream, {
+							append: (delta) => appendToNode(assistantId, delta),
+						});
+						setNodeStatus(assistantId, "final");
+					} else {
+						// OpenAI-compatible provider
+						const stream = streamText({
+							model: readiness.openAIProvider.chatModel(readiness.modelId),
+							messages: toModelMessages(
+								compilePathTo(parentId),
+								seedText || undefined,
+							),
+							temperature: 0.3,
+							abortSignal: abortController.signal,
+							includeRawChunks: true,
+							providerOptions: buildChatLogprobOptions(
+								OPENAI_COMPATIBLE_PROVIDER_NAME,
+							),
+						});
+						await processFullStream(stream.fullStream, {
+							append: (delta) => appendToNode(assistantId, delta),
+							parseRawChunk: parseChatLogprobsChunk,
+						});
+						setNodeStatus(assistantId, "final");
+					}
 				} catch (error) {
 					if (abortController.signal.aborted) {
 						setNodeStatus(assistantId, "draft");

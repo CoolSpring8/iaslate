@@ -6,6 +6,7 @@ import {
 	Group,
 	Modal,
 	NavLink,
+	NumberInput,
 	PasswordInput,
 	Progress,
 	Select,
@@ -25,13 +26,18 @@ import {
 	type HeatmapTheme,
 	useSettingsStore,
 } from "../state/useSettingsStore";
-import type { BuiltInAvailability, ProviderKind } from "../types";
+import type {
+	BuiltInAvailability,
+	ProviderEntry,
+	ProviderKind,
+} from "../types";
 
 interface SettingsFormValues {
 	name: string;
 	baseURL: string;
 	apiKey: string;
 	providerKind: ProviderKind;
+	tokensPerSecond: number | null;
 }
 
 interface SettingsModalProps {
@@ -88,7 +94,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		null,
 	);
 
-	const { register, handleSubmit, reset, watch, setValue, formState } =
+	const { register, handleSubmit, reset, watch, setValue } =
 		useForm<SettingsFormValues>({
 			mode: "onBlur",
 			reValidateMode: "onBlur",
@@ -97,9 +103,9 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				baseURL: "",
 				apiKey: "",
 				providerKind: "openai-compatible",
+				tokensPerSecond: 10,
 			},
 		});
-	const { isDirty, isSubmitting } = formState;
 
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 	const selectedProvider = watch("providerKind");
@@ -125,10 +131,18 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	);
 
 	const computeFallbackName = useCallback(
-		(kind: ProviderKind, baseURL: string) =>
-			kind === "openai-compatible"
-				? baseURL.trim() || "OpenAI-Compatible"
-				: "Built-in AI",
+		(kind: ProviderKind, baseURL: string) => {
+			switch (kind) {
+				case "openai-compatible":
+					return baseURL.trim() || "OpenAI-Compatible";
+				case "built-in":
+					return "Built-in AI";
+				case "dummy":
+					return "Dummy Provider";
+				default:
+					return "Unknown Provider";
+			}
+		},
 		[],
 	);
 
@@ -308,13 +322,17 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				const trimmedName = values.name.trim();
 				const fallbackName =
 					trimmedName ||
-					(values.providerKind === "openai-compatible"
-						? values.baseURL.trim() || "OpenAI-Compatible"
-						: "Built-in AI");
-				const config =
-					values.providerKind === "openai-compatible"
-						? { baseURL: values.baseURL, apiKey: values.apiKey }
-						: {};
+					computeFallbackName(values.providerKind, values.baseURL);
+				const resolvedTokensPerSecond =
+					values.tokensPerSecond && values.tokensPerSecond > 0
+						? values.tokensPerSecond
+						: 10;
+				let config: ProviderEntry["config"] = {};
+				if (values.providerKind === "openai-compatible") {
+					config = { baseURL: values.baseURL, apiKey: values.apiKey };
+				} else if (values.providerKind === "dummy") {
+					config = { tokensPerSecond: resolvedTokensPerSecond };
+				}
 
 				if (editingProviderId) {
 					await updateProvider(editingProviderId, {
@@ -340,15 +358,14 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				setIsSavingProvider(false);
 			}
 		},
-		[addProvider, editingProviderId, reset, updateProvider],
+		[
+			addProvider,
+			computeFallbackName,
+			editingProviderId,
+			reset,
+			updateProvider,
+		],
 	);
-
-	const handleAutoSubmit = useCallback(() => {
-		if (!isDirty || isSubmitting) {
-			return;
-		}
-		void handleSubmit(handleSaveProvider)();
-	}, [handleSaveProvider, handleSubmit, isDirty, isSubmitting]);
 
 	const startEditing = (providerId: string) => {
 		const provider = providers.find((p) => p.id === providerId);
@@ -364,6 +381,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 					providerKind: provider.kind,
 					baseURL: provider.config.baseURL || "",
 					apiKey: provider.config.apiKey || "",
+					tokensPerSecond: provider.config.tokensPerSecond ?? 10,
 				},
 				{ keepDirty: false, keepTouched: false },
 			);
@@ -467,17 +485,22 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							value: "built-in",
 							disabled: hasBuiltIn && !isEditingBuiltIn,
 						},
+						{ label: "Dummy Provider", value: "dummy" },
 					]}
 					value={selectedProvider}
 					onChange={(value) => {
 						if (value) {
-							if (value === "built-in") {
+							if (value === "built-in" || value === "dummy") {
 								setIsNameManuallySet(false);
 								setShowNameField(false);
-								setValue("name", computeFallbackName("built-in", ""), {
-									shouldDirty: true,
-									shouldTouch: true,
-								});
+								setValue(
+									"name",
+									computeFallbackName(value as ProviderKind, ""),
+									{
+										shouldDirty: true,
+										shouldTouch: true,
+									},
+								);
 							}
 							setValue("providerKind", value as ProviderKind, {
 								shouldDirty: true,
@@ -486,7 +509,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							});
 						}
 					}}
-					onBlur={handleAutoSubmit}
 					withAsterisk
 				/>
 				{selectedProvider === "openai-compatible" ? (
@@ -497,7 +519,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							type="url"
 							{...register("baseURL", {
 								required: selectedProvider === "openai-compatible",
-								onBlur: handleAutoSubmit,
 							})}
 						/>
 						<PasswordInput
@@ -505,7 +526,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							placeholder="sk-..."
 							{...register("apiKey", {
 								required: false,
-								onBlur: handleAutoSubmit,
 							})}
 						/>
 					</>
@@ -545,6 +565,28 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						) : null}
 					</div>
 				)}
+				{selectedProvider === "dummy" && (
+					<NumberInput
+						label="Tokens per Second"
+						description="Speed of token generation"
+						min={1}
+						max={100}
+						value={watch("tokensPerSecond") ?? ""}
+						onChange={(value) => {
+							if (value === "" || value === null) {
+								setValue("tokensPerSecond", null, {
+									shouldDirty: true,
+									shouldTouch: true,
+								});
+								return;
+							}
+							setValue("tokensPerSecond", Number(value), {
+								shouldDirty: true,
+								shouldTouch: true,
+							});
+						}}
+					/>
+				)}
 				<UnstyledButton
 					className="flex items-center gap-2 text-xs font-medium text-slate-600"
 					onClick={() => setShowNameField((prev) => !prev)}
@@ -569,7 +611,6 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 						placeholder="My Provider"
 						{...register("name", {
 							required: false,
-							onBlur: handleAutoSubmit,
 							onChange: () => setIsNameManuallySet(true),
 						})}
 					/>
@@ -610,6 +651,7 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 							baseURL: "",
 							apiKey: "",
 							providerKind: "openai-compatible",
+							tokensPerSecond: 10,
 						});
 						setIsNameManuallySet(false);
 						setShowNameField(false);
@@ -676,7 +718,9 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 										<Text size="xs" c="dimmed">
 											{provider.kind === "openai-compatible"
 												? "OpenAI Compatible"
-												: "Built-in AI"}
+												: provider.kind === "dummy"
+													? "Dummy Provider"
+													: "Built-in AI"}
 										</Text>
 									</div>
 								</Group>

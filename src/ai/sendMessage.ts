@@ -6,6 +6,7 @@ import type {
 	MessageContent,
 	TokenLogprob,
 } from "../types";
+import { createDummyProvider } from "./dummyProvider";
 import { OPENAI_COMPATIBLE_PROVIDER_NAME } from "./openaiCompatible";
 import {
 	buildChatLogprobOptions,
@@ -121,6 +122,23 @@ export const sendMessage = async (
 			const stream = streamText({
 				model: provider.getBuiltInChatModel(),
 				messages: modelMessages,
+				temperature: 0.3,
+				abortSignal: abortController.signal,
+			});
+			await processFullStream(stream.fullStream, {
+				append: (delta) => appendToNode(assistantId, delta),
+			});
+			setNodeStatus(assistantId, "final");
+		} else if (provider.kind === "dummy") {
+			const dummyProvider = createDummyProvider({
+				tokensPerSecond: provider.tokensPerSecond,
+			});
+			const stream = streamText({
+				model: dummyProvider.chatModel(provider.modelId),
+				messages: filteredContext.map((m) => ({
+					role: m.role as "system" | "user" | "assistant",
+					content: m.content,
+				})) as ModelMessage[],
 				temperature: 0.3,
 				abortSignal: abortController.signal,
 			});
