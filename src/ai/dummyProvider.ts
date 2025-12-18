@@ -167,6 +167,43 @@ const MAGIC_8_BALL_ANSWERS = [
 	"Very doubtful.",
 ] as const;
 
+const RANDOM_PROSE_WORDS = [
+	"the",
+	"quick",
+	"brown",
+	"fox",
+	"jumps",
+	"over",
+	"lazy",
+	"dog",
+	"and",
+	"then",
+	"runs",
+	"through",
+	"forest",
+	"while",
+	"birds",
+	"sing",
+	"softly",
+	"in",
+	"morning",
+	"light",
+	"as",
+	"clouds",
+	"drift",
+	"across",
+	"sky",
+	"bringing",
+	"gentle",
+	"breeze",
+	"that",
+	"rustles",
+	"leaves",
+	"creating",
+	"peaceful",
+	"melody",
+] as const;
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const hashInput = (input: string) => {
@@ -715,46 +752,10 @@ class DummyLanguageModel implements LanguageModelV2 {
 				const rng = createSeededRng(
 					hashInput(`${this.modelId}:${latestUserText}`),
 				);
-				const randomWords = [
-					"the",
-					"quick",
-					"brown",
-					"fox",
-					"jumps",
-					"over",
-					"lazy",
-					"dog",
-					"and",
-					"then",
-					"runs",
-					"through",
-					"forest",
-					"while",
-					"birds",
-					"sing",
-					"softly",
-					"in",
-					"morning",
-					"light",
-					"as",
-					"clouds",
-					"drift",
-					"across",
-					"sky",
-					"bringing",
-					"gentle",
-					"breeze",
-					"that",
-					"rustles",
-					"leaves",
-					"creating",
-					"peaceful",
-					"melody",
-				];
 				const wordCount = 15 + Math.floor(rng() * 20);
 				const words: string[] = [];
 				for (let i = 0; i < wordCount; i++) {
-					words.push(pickFrom(randomWords, rng));
+					words.push(pickFrom(RANDOM_PROSE_WORDS, rng));
 				}
 				// Add some punctuation
 				let result = words.join(" ");
@@ -812,46 +813,10 @@ class DummyLanguageModel implements LanguageModelV2 {
 				return `${leading}Ask again later.`;
 
 			case "random-prose": {
-				const randomWords = [
-					"the",
-					"quick",
-					"brown",
-					"fox",
-					"jumps",
-					"over",
-					"lazy",
-					"dog",
-					"and",
-					"then",
-					"runs",
-					"through",
-					"forest",
-					"while",
-					"birds",
-					"sing",
-					"softly",
-					"in",
-					"morning",
-					"light",
-					"as",
-					"clouds",
-					"drift",
-					"across",
-					"sky",
-					"bringing",
-					"gentle",
-					"breeze",
-					"that",
-					"rustles",
-					"leaves",
-					"creating",
-					"peaceful",
-					"melody",
-				];
 				const wordCount = 10 + Math.floor(rng() * 20);
 				const words: string[] = [];
 				for (let i = 0; i < wordCount; i++) {
-					words.push(pickFrom(randomWords, rng));
+					words.push(pickFrom(RANDOM_PROSE_WORDS, rng));
 				}
 				let result = words.join(" ");
 				if (result.length > 0) {

@@ -358,7 +358,13 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 				setIsSavingProvider(false);
 			}
 		},
-		[addProvider, editingProviderId, reset, updateProvider],
+		[
+			addProvider,
+			computeFallbackName,
+			editingProviderId,
+			reset,
+			updateProvider,
+		],
 	);
 
 	const startEditing = (providerId: string) => {

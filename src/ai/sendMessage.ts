@@ -139,6 +139,7 @@ export const sendMessage = async (
 					role: m.role as "system" | "user" | "assistant",
 					content: m.content,
 				})) as ModelMessage[],
+				temperature: 0.3,
 				abortSignal: abortController.signal,
 			});
 			await processFullStream(stream.fullStream, {
