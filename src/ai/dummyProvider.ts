@@ -413,53 +413,68 @@ class DummyLanguageModel implements LanguageModelV2 {
 
 		const stream = new ReadableStream<LanguageModelV2StreamPart>({
 			start: async (controller) => {
-				if (abortSignal?.aborted) {
-					controller.error(
-						abortSignal.reason ?? new DOMException("Aborted", "AbortError"),
-					);
-					return;
-				}
+				const abortError = () =>
+					abortSignal?.reason ?? new DOMException("Aborted", "AbortError");
 
-				const handleAbort = () => {
-					controller.error(
-						abortSignal?.reason ?? new DOMException("Aborted", "AbortError"),
-					);
-				};
+				let abortListener: (() => void) | undefined;
+				const abortPromise = abortSignal
+					? new Promise<never>((_, reject) => {
+							abortListener = () => reject(abortError());
+							if (abortSignal.aborted) {
+								reject(abortError());
+								return;
+							}
+							abortSignal.addEventListener("abort", abortListener, {
+								once: true,
+							});
+						})
+					: null;
 
-				if (abortSignal) {
-					abortSignal.addEventListener("abort", handleAbort);
-				}
-
-				controller.enqueue({ type: "stream-start", warnings });
-				controller.enqueue({ type: "text-start", id: textId });
-
-				for (const chunk of chunks) {
+				try {
 					if (abortSignal?.aborted) {
-						if (abortSignal) {
-							abortSignal.removeEventListener("abort", handleAbort);
-						}
-						controller.error(
-							abortSignal?.reason ?? new DOMException("Aborted", "AbortError"),
-						);
+						controller.error(abortError());
 						return;
 					}
-					controller.enqueue({ type: "text-delta", id: textId, delta: chunk });
-					if (delay > 0) {
-						await sleep(delay);
+
+					controller.enqueue({ type: "stream-start", warnings });
+					controller.enqueue({ type: "text-start", id: textId });
+
+					for (const chunk of chunks) {
+						if (abortSignal?.aborted) {
+							throw abortError();
+						}
+						controller.enqueue({
+							type: "text-delta",
+							id: textId,
+							delta: chunk,
+						});
+						if (delay > 0) {
+							if (abortPromise) {
+								await Promise.race([sleep(delay), abortPromise]);
+							} else {
+								await sleep(delay);
+							}
+						}
+					}
+
+					if (abortSignal?.aborted) {
+						throw abortError();
+					}
+
+					controller.enqueue({ type: "text-end", id: textId });
+					controller.enqueue({
+						type: "finish",
+						finishReason: "stop" as const,
+						usage,
+					});
+					controller.close();
+				} catch (error) {
+					controller.error(error);
+				} finally {
+					if (abortSignal && abortListener) {
+						abortSignal.removeEventListener("abort", abortListener);
 					}
 				}
-
-				controller.enqueue({ type: "text-end", id: textId });
-				controller.enqueue({
-					type: "finish",
-					finishReason: "stop" as const,
-					usage,
-				});
-
-				if (abortSignal) {
-					abortSignal.removeEventListener("abort", handleAbort);
-				}
-				controller.close();
 			},
 		});
 
