@@ -376,7 +376,9 @@ export const useConversationController = ({
 				readiness.kind !== "openai-compatible" &&
 				readiness.kind !== "dummy"
 			) {
-				toast.error("Token rerolls require an OpenAI-compatible provider");
+				toast.error(
+					"Token rerolls are supported only by OpenAI-compatible and dummy providers",
+				);
 				return undefined;
 			}
 			if (isGenerating) {
