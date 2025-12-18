@@ -299,7 +299,6 @@ const App = () => {
 							position="right"
 							size="sm"
 							title="Side Panel"
-							padding="0"
 							styles={{
 								content: {
 									display: "flex",
