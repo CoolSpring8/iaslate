@@ -187,7 +187,13 @@ const MessageItem = ({
 										disabled
 									/>
 								) : (
-									<Markdown remarkPlugins={[]}>{reasoningText}</Markdown>
+									<Markdown
+										disallowedElements={["h1", "h2", "h3", "h4", "h5", "h6"]}
+										unwrapDisallowed
+										remarkPlugins={[]}
+									>
+										{reasoningText}
+									</Markdown>
 								)}
 							</div>
 						)}
