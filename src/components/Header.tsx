@@ -10,6 +10,8 @@ interface HeaderProps {
 	modelStatus?: string;
 	view: AppView;
 	onViewChange: (value: AppView) => void;
+	showChatDiagram?: boolean;
+	onToggleChatDiagram?: () => void;
 	onClear: () => void;
 	onImport: () => void;
 	onExport: () => void;
@@ -22,7 +24,6 @@ const viewOptions: Array<{
 	icon: string;
 }> = [
 	{ label: "Chat", value: "chat", icon: "i-lucide-message-square" },
-	{ label: "Diagram", value: "diagram", icon: "i-lucide-git-branch" },
 	{ label: "Text", value: "text", icon: "i-lucide-align-left" },
 ];
 
@@ -35,6 +36,8 @@ const Header = ({
 	modelStatus,
 	view,
 	onViewChange,
+	showChatDiagram,
+	onToggleChatDiagram,
 	onClear,
 	onImport,
 	onExport,
@@ -90,6 +93,15 @@ const Header = ({
 			/>
 		</div>
 		<div className="ml-auto flex gap-4">
+			{view === "chat" && onToggleChatDiagram ? (
+				<UnstyledButton
+					className={`i-lucide-git-branch w-5 h-5 ${showChatDiagram ? "text-blue-600" : "text-slate-500"}`}
+					title={showChatDiagram ? "Hide diagram" : "Show diagram"}
+					aria-label={showChatDiagram ? "Hide diagram" : "Show diagram"}
+					aria-pressed={showChatDiagram}
+					onClick={onToggleChatDiagram}
+				/>
+			) : null}
 			<UnstyledButton
 				className="i-lucide-eraser w-5 h-5"
 				title="Clear conversation"

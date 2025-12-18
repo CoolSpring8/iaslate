@@ -68,6 +68,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 		setEnableTokenHeatmap,
 		heatmapTheme,
 		setHeatmapTheme,
+		showChatDiagram,
+		setShowChatDiagram,
 	} = useSettingsStore(
 		useShallow((state) => ({
 			providers: state.providers,
@@ -86,6 +88,8 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 			setEnableTokenHeatmap: state.setEnableTokenHeatmap,
 			heatmapTheme: state.heatmapTheme,
 			setHeatmapTheme: state.setHeatmapTheme,
+			showChatDiagram: state.showChatDiagram,
+			setShowChatDiagram: state.setShowChatDiagram,
 		})),
 	);
 
@@ -422,6 +426,26 @@ const SettingsModal = ({ open, onClose }: SettingsModalProps) => {
 	const renderDisplayTab = () => (
 		<Stack gap="md">
 			<Title order={4}>Display Settings</Title>
+			<Card withBorder padding="md" radius="md">
+				<Group justify="space-between" align="flex-start">
+					<div>
+						<Text size="sm" fw={500}>
+							Show diagram in chat
+						</Text>
+						<Text size="sm" c="dimmed">
+							Display the thread diagram next to the linear chat view.
+						</Text>
+					</div>
+					<Switch
+						checked={showChatDiagram}
+						onChange={(event) => {
+							void setShowChatDiagram(event.currentTarget.checked);
+						}}
+						size="md"
+						aria-label="Toggle chat diagram"
+					/>
+				</Group>
+			</Card>
 			<Card withBorder padding="md" radius="md">
 				<Group justify="space-between" align="flex-start">
 					<div>

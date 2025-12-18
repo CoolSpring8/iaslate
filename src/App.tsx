@@ -29,6 +29,8 @@ const App = () => {
 		activeProviderId,
 		setActiveModel,
 		enableBeforeUnloadWarning,
+		showChatDiagram,
+		setShowChatDiagram,
 		builtInAvailability,
 		hydrate,
 		refreshBuiltInAvailability,
@@ -38,6 +40,8 @@ const App = () => {
 			activeProviderId: state.activeProviderId,
 			setActiveModel: state.setActiveModel,
 			enableBeforeUnloadWarning: state.enableBeforeUnloadWarning,
+			showChatDiagram: state.showChatDiagram,
+			setShowChatDiagram: state.setShowChatDiagram,
 			builtInAvailability: state.builtInAvailability,
 			hydrate: state.hydrate,
 			refreshBuiltInAvailability: state.refreshBuiltInAvailability,
@@ -207,36 +211,43 @@ const App = () => {
 						modelStatus={builtInStatusText}
 						view={view}
 						onViewChange={setView}
+						showChatDiagram={showChatDiagram}
+						onToggleChatDiagram={() => {
+							void setShowChatDiagram(!showChatDiagram);
+						}}
 						onClear={handleClearConversation}
 						onImport={triggerImport}
 						onExport={triggerExport}
 						onOpenSettings={onSettingsOpen}
 					/>
 					{view === "chat" ? (
-						<div className="flex-1 min-h-0">
-							<ChatView
-								messages={chatMessages}
-								isGenerating={isGenerating}
-								editingMessageId={editingMessageId}
-								onSend={send}
-								onStop={stop}
-								onDeleteMessage={deleteMessage}
-								onDetachMessage={detachMessage}
-								onEditStart={startEdit}
-								onEditSubmit={submitEdit}
-								onEditCancel={cancelEdit}
-								onPromptDirtyChange={setIsPromptDirty}
-								resetSignal={resetSignal}
-								onTokenReroll={rerollFromToken}
-							/>
-						</div>
-					) : view === "diagram" ? (
-						<div className="flex-1 overflow-hidden px-2 py-2">
-							<DiagramView
-								onNodeDoubleClick={activateThread}
-								onSetActiveNode={activateThread}
-								onDuplicateFromNode={duplicateFromNode}
-							/>
+						<div className="flex-1 min-h-0 flex">
+							<div className="min-w-0 min-h-0 flex-1">
+								<ChatView
+									messages={chatMessages}
+									isGenerating={isGenerating}
+									editingMessageId={editingMessageId}
+									onSend={send}
+									onStop={stop}
+									onDeleteMessage={deleteMessage}
+									onDetachMessage={detachMessage}
+									onEditStart={startEdit}
+									onEditSubmit={submitEdit}
+									onEditCancel={cancelEdit}
+									onPromptDirtyChange={setIsPromptDirty}
+									resetSignal={resetSignal}
+									onTokenReroll={rerollFromToken}
+								/>
+							</div>
+							{showChatDiagram ? (
+								<div className="min-w-0 min-h-0 flex-1 overflow-hidden border-l border-solid border-slate-200 dark:border-slate-800 px-2 py-2">
+									<DiagramView
+										onNodeDoubleClick={activateThread}
+										onSetActiveNode={activateThread}
+										onDuplicateFromNode={duplicateFromNode}
+									/>
+								</div>
+							) : null}
 						</div>
 					) : (
 						<TextCompletionView

@@ -23,6 +23,7 @@ type StoredSettings = {
 	enableBeforeUnloadWarning: boolean;
 	enableTokenHeatmap: boolean;
 	heatmapTheme: HeatmapTheme;
+	showChatDiagram?: boolean;
 	// Legacy fields retained for backward compatibility; they are ignored in favor of per-provider storage
 	models?: ModelInfo[];
 	activeModel?: string | null;
@@ -34,12 +35,14 @@ interface SettingsState {
 	enableBeforeUnloadWarning: boolean;
 	enableTokenHeatmap: boolean;
 	heatmapTheme: HeatmapTheme;
+	showChatDiagram: boolean;
 	builtInAvailability: BuiltInAvailability;
 	isHydrated: boolean;
 	setActiveModel: (model: string | null) => void;
 	setEnableBeforeUnloadWarning: (enabled: boolean) => Promise<void>;
 	setEnableTokenHeatmap: (enabled: boolean) => Promise<void>;
 	setHeatmapTheme: (theme: HeatmapTheme) => Promise<void>;
+	setShowChatDiagram: (show: boolean) => Promise<void>;
 	setBuiltInAvailability: (availability: BuiltInAvailability) => void;
 	refreshBuiltInAvailability: () => Promise<void>;
 	hydrate: () => Promise<void>;
@@ -84,6 +87,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			enableBeforeUnloadWarning,
 			enableTokenHeatmap,
 			heatmapTheme,
+			showChatDiagram,
 		} = get();
 		await setValue(settingsKey, {
 			providers,
@@ -91,6 +95,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			enableBeforeUnloadWarning,
 			enableTokenHeatmap,
 			heatmapTheme,
+			showChatDiagram,
 			...overrides,
 		});
 	};
@@ -101,6 +106,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 		enableBeforeUnloadWarning: true,
 		enableTokenHeatmap: false,
 		heatmapTheme: "traffic-light",
+		showChatDiagram: true,
 		builtInAvailability: "unknown",
 		isHydrated: false,
 		setActiveModel: (model) => {
@@ -147,6 +153,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			set({ heatmapTheme: theme });
 			await persistSettings({ heatmapTheme: theme });
 		},
+		setShowChatDiagram: async (show) => {
+			set({ showChatDiagram: show });
+			await persistSettings({ showChatDiagram: show });
+		},
 		setBuiltInAvailability: (availability) =>
 			set({ builtInAvailability: availability }),
 		refreshBuiltInAvailability: async () => {
@@ -169,6 +179,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 						storedSettings.enableBeforeUnloadWarning ?? true,
 					enableTokenHeatmap: storedSettings.enableTokenHeatmap ?? false,
 					heatmapTheme: storedSettings.heatmapTheme ?? "traffic-light",
+					showChatDiagram: storedSettings.showChatDiagram ?? true,
 					isHydrated: true,
 				});
 			} else {

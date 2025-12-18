@@ -1,6 +1,6 @@
 import type { LanguageModel } from "ai";
 
-export type AppView = "chat" | "diagram" | "text";
+export type AppView = "chat" | "text";
 
 export interface MessageMetadata {
 	uuid: string;
