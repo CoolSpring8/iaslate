@@ -10,9 +10,8 @@ interface HeaderProps {
 	modelStatus?: string;
 	view: AppView;
 	onViewChange: (value: AppView) => void;
-	showChatDiagram?: boolean;
-	onToggleChatDiagram?: () => void;
-	onOpenSidePanel?: () => void;
+	isSidePanelOpen: boolean;
+	onToggleSidePanel: () => void;
 	onClear: () => void;
 	onImport: () => void;
 	onExport: () => void;
@@ -37,9 +36,8 @@ const Header = ({
 	modelStatus,
 	view,
 	onViewChange,
-	showChatDiagram,
-	onToggleChatDiagram,
-	onOpenSidePanel,
+	isSidePanelOpen,
+	onToggleSidePanel,
 	onClear,
 	onImport,
 	onExport,
@@ -96,23 +94,13 @@ const Header = ({
 				/>
 			</div>
 			<div className="ml-auto flex gap-4">
-				{view === "chat" && onToggleChatDiagram ? (
-					<UnstyledButton
-						className={`i-lucide-git-branch hidden sm:block w-5 h-5 ${showChatDiagram ? "text-blue-600" : "text-slate-500"}`}
-						title={showChatDiagram ? "Hide diagram" : "Show diagram"}
-						aria-label={showChatDiagram ? "Hide diagram" : "Show diagram"}
-						aria-pressed={showChatDiagram}
-						onClick={onToggleChatDiagram}
-					/>
-				) : null}
-				{view === "chat" && onOpenSidePanel ? (
-					<UnstyledButton
-						className="i-lucide-panel-right w-5 h-5 text-slate-500 sm:hidden"
-						title="Open tree/settings"
-						aria-label="Open tree/settings"
-						onClick={onOpenSidePanel}
-					/>
-				) : null}
+				<UnstyledButton
+					className="i-lucide-panel-right w-5 h-5"
+					title={isSidePanelOpen ? "Hide side panel" : "Show side panel"}
+					aria-label={isSidePanelOpen ? "Hide side panel" : "Show side panel"}
+					aria-pressed={isSidePanelOpen}
+					onClick={onToggleSidePanel}
+				/>
 				<UnstyledButton
 					className="i-lucide-eraser w-5 h-5"
 					title="Clear conversation"

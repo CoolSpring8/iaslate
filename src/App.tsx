@@ -30,8 +30,6 @@ const App = () => {
 		activeProviderId,
 		setActiveModel,
 		enableBeforeUnloadWarning,
-		showChatDiagram,
-		setShowChatDiagram,
 		builtInAvailability,
 		hydrate,
 		refreshBuiltInAvailability,
@@ -41,21 +39,20 @@ const App = () => {
 			activeProviderId: state.activeProviderId,
 			setActiveModel: state.setActiveModel,
 			enableBeforeUnloadWarning: state.enableBeforeUnloadWarning,
-			showChatDiagram: state.showChatDiagram,
-			setShowChatDiagram: state.setShowChatDiagram,
 			builtInAvailability: state.builtInAvailability,
 			hydrate: state.hydrate,
 			refreshBuiltInAvailability: state.refreshBuiltInAvailability,
 		})),
 	);
 	const [view, setView] = useState<AppView>("chat");
+	const [chatSidePanelTab, setChatSidePanelTab] = useState<
+		"diagram" | "settings"
+	>("settings");
 	const isMobile = useMediaQuery("(max-width: 768px)", undefined, {
 		getInitialValueInEffect: false,
 	});
-	const [
-		isMobilePanelOpen,
-		{ open: openMobilePanel, close: closeMobilePanel },
-	] = useDisclosure(false);
+	const [isSidePanelOpen, { toggle: toggleSidePanel, close: closeSidePanel }] =
+		useDisclosure(false);
 
 	const activeProvider = useMemo(
 		() => providers.find((p) => p.id === activeProviderId),
@@ -198,31 +195,26 @@ const App = () => {
 	const isModelSelectionSupported =
 		providerKind === "openai-compatible" || providerKind === "dummy";
 
-	const sidePanelElement = (
+	const chatSidePanelElement = (
 		<SidePanel
 			providerKind={providerKind}
+			activeTab={chatSidePanelTab}
+			onActiveTabChange={setChatSidePanelTab}
 			onNodeDoubleClick={(id) => {
 				activateThread(id);
-				if (isMobile) closeMobilePanel();
+				if (isMobile) closeSidePanel();
 			}}
 			onSetActiveNode={activateThread}
 			onDuplicateFromNode={duplicateFromNode}
 		/>
 	);
 
-	const handleToggleChatDiagram = useCallback(() => {
-		void setShowChatDiagram(!showChatDiagram);
-	}, [setShowChatDiagram, showChatDiagram]);
+	const textSidePanelElement = (
+		<SidePanel providerKind={providerKind} tabs={["settings"]} />
+	);
 
-	const handleOpenSidePanel = useCallback(() => {
-		openMobilePanel();
-	}, [openMobilePanel]);
-
-	useEffect(() => {
-		if (!isMobile || view !== "chat") {
-			closeMobilePanel();
-		}
-	}, [closeMobilePanel, isMobile, view]);
+	const sidePanelContent =
+		view === "chat" ? chatSidePanelElement : textSidePanelElement;
 
 	return (
 		<SnapshotIO
@@ -245,17 +237,16 @@ const App = () => {
 						modelStatus={builtInStatusText}
 						view={view}
 						onViewChange={setView}
-						showChatDiagram={showChatDiagram}
-						onToggleChatDiagram={handleToggleChatDiagram}
-						onOpenSidePanel={handleOpenSidePanel}
+						isSidePanelOpen={isSidePanelOpen}
+						onToggleSidePanel={toggleSidePanel}
 						onClear={handleClearConversation}
 						onImport={triggerImport}
 						onExport={triggerExport}
 						onOpenSettings={onSettingsOpen}
 					/>
-					{view === "chat" ? (
-						<div className="flex-1 min-h-0 flex">
-							<div className="min-w-0 min-h-0 flex-1">
+					<div className="flex-1 min-h-0 flex">
+						<div className="min-w-0 min-h-0 flex-1">
+							{view === "chat" ? (
 								<ChatView
 									messages={chatMessages}
 									isGenerating={isGenerating}
@@ -271,45 +262,46 @@ const App = () => {
 									resetSignal={resetSignal}
 									onTokenReroll={rerollFromToken}
 								/>
-							</div>
-							{showChatDiagram && !isMobile ? (
-								<div className="min-w-0 min-h-0 flex-1 overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.04)] dark:shadow-[-2px_0_8px_rgba(0,0,0,0.2)]">
-									{sidePanelElement}
-								</div>
-							) : null}
+							) : (
+								<TextCompletionView
+									value={textContent}
+									isGenerating={isTextGenerating}
+									isPredictDisabled={!isModelSelectionSupported}
+									disabledReason={
+										!isModelSelectionSupported
+											? "Built-in AI supports chat only"
+											: undefined
+									}
+									onChange={(value) => {
+										overwriteTextContent(value);
+									}}
+									onPredict={predict}
+									onCancel={cancel}
+									tokenLogprobs={textTokenLogprobs}
+									onTokenReroll={rerollTextFromToken}
+									showTokenOverlay
+									generatedPrefix={textSeed}
+								/>
+							)}
 						</div>
-					) : (
-						<TextCompletionView
-							value={textContent}
-							isGenerating={isTextGenerating}
-							isPredictDisabled={!isModelSelectionSupported}
-							disabledReason={
-								!isModelSelectionSupported
-									? "Built-in AI supports chat only"
-									: undefined
-							}
-							onChange={(value) => {
-								overwriteTextContent(value);
-							}}
-							onPredict={predict}
-							onCancel={cancel}
-							tokenLogprobs={textTokenLogprobs}
-							onTokenReroll={rerollTextFromToken}
-							showTokenOverlay
-							generatedPrefix={textSeed}
-						/>
-					)}
 
-					{view === "chat" && isMobile ? (
+						{isSidePanelOpen && !isMobile ? (
+							<aside className="shrink-0 w-[420px] lg:w-[520px] min-w-0 min-h-0 overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.04)] dark:shadow-[-2px_0_8px_rgba(0,0,0,0.2)]">
+								{sidePanelContent}
+							</aside>
+						) : null}
+					</div>
+
+					{isMobile ? (
 						<Drawer
-							opened={isMobilePanelOpen}
-							onClose={closeMobilePanel}
+							opened={isSidePanelOpen}
+							onClose={closeSidePanel}
 							position="right"
 							size="sm"
-							title="Tree & Settings"
+							title="Side Panel"
 							padding="0"
 						>
-							{sidePanelElement}
+							{sidePanelContent}
 						</Drawer>
 					) : null}
 					<SettingsModal open={isSettingsOpen} onClose={onSettingsClose} />
