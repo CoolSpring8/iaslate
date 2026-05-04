@@ -28,12 +28,10 @@
 - OpenAI-compatible: supports chat and text completion views.
 - Built-in AI (Chrome/Edge): chat-only; text view is disabled.
 
-## Validation & DevTools MCP
+## Validation & Browser Use
 
 - Assume `bun dev` is already running locally; don’t start it from the agent unless explicitly asked.
-- Chrome DevTools MCP is the mandatory default for UI verification; navigate to `http://localhost:8080/` to check the UI after changes.
-- Avoid shell curls to localhost unless the user explicitly requests; rely on MCP interactions for UI checks.
-- If MCP is unavailable or cannot be used for a specific check, state that explicitly and explain the fallback approach.
+- Browser use is the default for UI verification; use the browser-use skill with the in-app browser backend and navigate to `http://localhost:8080/` to check the UI after changes.
 
 ## Commit & Pull Request Guidelines
 
