@@ -1,7 +1,11 @@
 import { NumberInput, Slider, Stack, Switch, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useSettingsStore } from "../state/useSettingsStore";
+import {
+	MAX_GENERATION_MAX_TOKENS,
+	MIN_GENERATION_MAX_TOKENS,
+	useSettingsStore,
+} from "../state/useSettingsStore";
 import type { ProviderKind } from "../types";
 
 interface GenerationSettingsProps {
@@ -29,7 +33,7 @@ const providerSettings: Record<
 	},
 	"built-in": {
 		temperature: true,
-		maxTokens: true,
+		maxTokens: false,
 		logprobs: false,
 	},
 	dummy: {
@@ -41,6 +45,20 @@ const providerSettings: Record<
 
 const formatTemperature = (value: number) =>
 	value.toFixed(2).replace(/\.00$/, "");
+
+const normalizeMaxTokensInput = (value: string | number) => {
+	if (value === "") {
+		return undefined;
+	}
+	const numericValue = typeof value === "number" ? value : Number(value);
+	if (!Number.isFinite(numericValue)) {
+		return null;
+	}
+	return Math.min(
+		MAX_GENERATION_MAX_TOKENS,
+		Math.max(MIN_GENERATION_MAX_TOKENS, Math.trunc(numericValue)),
+	);
+};
 
 const ControlBlock = ({ label, value, children }: ControlBlockProps) => (
 	<section className="space-y-2">
@@ -100,15 +118,20 @@ const GenerationSettings = ({ providerKind }: GenerationSettingsProps) => {
 						<NumberInput
 							value={generationParams.maxTokens ?? ""}
 							onChange={(value) => {
+								const maxTokens = normalizeMaxTokensInput(value);
+								if (maxTokens === null) {
+									return;
+								}
 								void setGenerationParams({
-									maxTokens: value === "" ? undefined : Number(value),
+									maxTokens,
 								});
 							}}
-							min={1}
-							max={32768}
+							min={MIN_GENERATION_MAX_TOKENS}
+							max={MAX_GENERATION_MAX_TOKENS}
 							placeholder="Unlimited"
 							size="xs"
 							aria-label="Max tokens"
+							allowDecimal={false}
 							hideControls
 						/>
 					</ControlBlock>

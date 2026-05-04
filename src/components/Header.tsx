@@ -90,7 +90,7 @@ const Header = ({
 					withItemsBorders={false}
 					radius="xl"
 					classNames={{
-						root: "rounded-full bg-slate-100/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 p-1",
+						root: "rounded-full bg-slate-100/80 dark:bg-slate-900/50 border border-solid border-slate-200 dark:border-slate-800 p-1",
 						indicator:
 							"rounded-full bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm",
 						control:
@@ -146,21 +146,25 @@ const Header = ({
 				<UnstyledButton
 					className="i-lucide-eraser w-5 h-5"
 					title="Clear conversation"
+					aria-label="Clear conversation"
 					onClick={onClear}
 				/>
 				<UnstyledButton
 					className="i-lucide-file-input w-5 h-5"
 					title="Import from JSON"
+					aria-label="Import from JSON"
 					onClick={onImport}
 				/>
 				<UnstyledButton
 					className="i-lucide-file-output w-5 h-5"
 					title="Export to JSON"
+					aria-label="Export to JSON"
 					onClick={onExport}
 				/>
 				<UnstyledButton
 					className="i-lucide-settings w-5 h-5"
 					title="Settings"
+					aria-label="Settings"
 					onClick={onOpenSettings}
 				/>
 			</div>

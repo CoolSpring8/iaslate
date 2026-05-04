@@ -28,11 +28,25 @@ const DEFAULT_GENERATION_PARAMS: GenerationParams = {
 	logprobs: true,
 };
 
+export const MIN_GENERATION_MAX_TOKENS = 1;
+export const MAX_GENERATION_MAX_TOKENS = 32768;
+const GENERATION_PARAMS_PERSIST_DELAY_MS = 300;
+
+const normalizeMaxTokens = (value: unknown) => {
+	if (typeof value !== "number" || !Number.isFinite(value)) {
+		return undefined;
+	}
+	return Math.min(
+		MAX_GENERATION_MAX_TOKENS,
+		Math.max(MIN_GENERATION_MAX_TOKENS, Math.trunc(value)),
+	);
+};
+
 const normalizeGenerationParams = (
 	params?: Partial<GenerationParams>,
 ): GenerationParams => ({
 	temperature: params?.temperature ?? DEFAULT_GENERATION_PARAMS.temperature,
-	maxTokens: params?.maxTokens,
+	maxTokens: normalizeMaxTokens(params?.maxTokens),
 	logprobs: params?.logprobs ?? DEFAULT_GENERATION_PARAMS.logprobs,
 });
 
@@ -119,6 +133,45 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 		});
 	};
 
+	let generationParamsPersistTimer: ReturnType<typeof setTimeout> | undefined;
+	let pendingGenerationParams: GenerationParams | undefined;
+	let isPersistingGenerationParams = false;
+
+	const flushGenerationParamsPersist = async () => {
+		if (isPersistingGenerationParams) {
+			return;
+		}
+		const generationParams = pendingGenerationParams;
+		if (!generationParams) {
+			return;
+		}
+		pendingGenerationParams = undefined;
+		isPersistingGenerationParams = true;
+		try {
+			await persistSettings({ generationParams });
+		} catch (error) {
+			console.error("Failed to persist generation parameters", error);
+		} finally {
+			isPersistingGenerationParams = false;
+			if (pendingGenerationParams) {
+				void flushGenerationParamsPersist();
+			}
+		}
+	};
+
+	const scheduleGenerationParamsPersist = (
+		generationParams: GenerationParams,
+	) => {
+		pendingGenerationParams = generationParams;
+		if (generationParamsPersistTimer) {
+			clearTimeout(generationParamsPersistTimer);
+		}
+		generationParamsPersistTimer = setTimeout(() => {
+			generationParamsPersistTimer = undefined;
+			void flushGenerationParamsPersist();
+		}, GENERATION_PARAMS_PERSIST_DELAY_MS);
+	};
+
 	return {
 		providers: [],
 		activeProviderId: null,
@@ -179,7 +232,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 				...params,
 			});
 			set({ generationParams: updated });
-			await persistSettings({ generationParams: updated });
+			scheduleGenerationParamsPersist(updated);
 		},
 		setBuiltInAvailability: (availability) =>
 			set({ builtInAvailability: availability }),

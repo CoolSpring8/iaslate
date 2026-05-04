@@ -6,6 +6,8 @@ import {
 	TypeValidationError,
 } from "ai";
 
+const MAX_FALLBACK_RESPONSE_BODY_LENGTH = 300;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null;
 
@@ -22,6 +24,14 @@ const parseJson = (value: string): unknown | undefined => {
 	}
 };
 
+const clampFallbackMessage = (value: string) => {
+	const collapsed = value.replace(/\s+/g, " ").trim();
+	if (collapsed.length <= MAX_FALLBACK_RESPONSE_BODY_LENGTH) {
+		return collapsed;
+	}
+	return `${collapsed.slice(0, MAX_FALLBACK_RESPONSE_BODY_LENGTH - 3)}...`;
+};
+
 const messageFromOpenAICompatiblePayload = (value: unknown) => {
 	if (!isRecord(value) || !isRecord(value["error"])) {
 		return undefined;
@@ -35,7 +45,9 @@ const messageFromResponseBody = (responseBody: string | undefined) => {
 		return undefined;
 	}
 	const parsed = parseJson(body);
-	return messageFromOpenAICompatiblePayload(parsed) ?? body;
+	return (
+		messageFromOpenAICompatiblePayload(parsed) ?? clampFallbackMessage(body)
+	);
 };
 
 const messageFromErrorCause = (cause: unknown) => {

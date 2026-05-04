@@ -81,23 +81,21 @@ export const sendMessage = async (
 	const lastMessage = currentContext[currentContext.length - 1];
 
 	let assistantId: string;
-	let isAssistantPrefill = false;
+	let prefillAssistantId: string | undefined;
 
 	if (hasContent) {
 		resolvedParentId = createUserAfter(resolvedParentId, promptContent);
 		assistantId = createAssistantAfter(resolvedParentId);
 	} else if (lastMessage?.role === "assistant") {
-		assistantId = lastMessage._metadata.uuid;
-		isAssistantPrefill = true;
+		prefillAssistantId = lastMessage._metadata.uuid;
+		assistantId = createAssistantAfter(prefillAssistantId);
 	} else {
 		assistantId = createAssistantAfter(resolvedParentId);
 	}
 
-	const contextMessages = compilePathTo(
-		isAssistantPrefill ? assistantId : resolvedParentId,
-	);
+	const contextMessages = compilePathTo(prefillAssistantId ?? resolvedParentId);
 	const shouldPrefixAssistant =
-		provider.kind === "built-in" && isAssistantPrefill;
+		provider.kind === "built-in" && typeof prefillAssistantId !== "undefined";
 
 	setNodeStatus(assistantId, "streaming");
 	setActiveTarget(assistantId);
@@ -114,7 +112,10 @@ export const sendMessage = async (
 					role: message.role as "system" | "user" | "assistant",
 					content: message.content,
 				};
-				if (shouldPrefixAssistant && message._metadata.uuid === assistantId) {
+				if (
+					shouldPrefixAssistant &&
+					message._metadata.uuid === prefillAssistantId
+				) {
 					return {
 						...base,
 						providerOptions: {
@@ -128,9 +129,6 @@ export const sendMessage = async (
 				model: provider.getBuiltInChatModel(),
 				messages: modelMessages,
 				temperature: generationParams?.temperature ?? 0.7,
-				...(generationParams?.maxTokens && {
-					maxTokens: generationParams.maxTokens,
-				}),
 				abortSignal: abortController.signal,
 			});
 			await processFullStream(stream.fullStream, {
