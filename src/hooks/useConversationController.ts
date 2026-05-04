@@ -11,6 +11,7 @@ import {
 } from "../ai/openaiLogprobs";
 import { sendMessage } from "../ai/sendMessage";
 import { processFullStream } from "../ai/streamUtils";
+import { useSettingsStore } from "../state/useSettingsStore";
 import { useConversationTree } from "../tree/useConversationTree";
 import type {
 	ChatProviderReady,
@@ -20,6 +21,7 @@ import type {
 	TokenLogprob,
 } from "../types";
 import { deleteMessage } from "../utils/chatActions";
+import { errorToToastMessage } from "../utils/errors";
 import { useStreamManager } from "./useStreamManager";
 
 interface UseConversationControllerOptions {
@@ -231,6 +233,7 @@ export const useConversationController = ({
 			if (!chatProvider) {
 				return;
 			}
+			const generationParams = useSettingsStore.getState().generationParams;
 			try {
 				await sendMessage(promptContent, {
 					provider: chatProvider,
@@ -246,10 +249,11 @@ export const useConversationController = ({
 					streamManager,
 					setIsGenerating,
 					defaultSystemPrompt,
+					generationParams,
 				});
 			} catch (error) {
 				console.error(error);
-				toast.error("Failed to generate response");
+				toast.error(errorToToastMessage(error));
 			}
 		},
 		[
@@ -474,7 +478,7 @@ export const useConversationController = ({
 						setNodeStatus(assistantId, "draft");
 					} else {
 						setNodeStatus(assistantId, "error");
-						toast.error("Failed to regenerate from token");
+						toast.error(errorToToastMessage(error));
 						console.error(error);
 					}
 				} finally {

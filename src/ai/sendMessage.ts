@@ -2,6 +2,7 @@ import { type ModelMessage, streamText } from "ai";
 import type { StreamManager } from "../hooks/useStreamManager";
 import type {
 	ChatProviderReady,
+	GenerationParams,
 	Message,
 	MessageContent,
 	TokenLogprob,
@@ -39,6 +40,7 @@ export interface SendMessageContext {
 	streamManager: StreamManager;
 	setIsGenerating: (value: boolean) => void;
 	defaultSystemPrompt: string;
+	generationParams?: GenerationParams;
 }
 
 const hasMessageContent = (content: MessageContent) => {
@@ -66,6 +68,7 @@ export const sendMessage = async (
 		streamManager,
 		setIsGenerating,
 		defaultSystemPrompt,
+		generationParams,
 	}: SendMessageContext,
 ) => {
 	const hasContent = hasMessageContent(promptContent);
@@ -78,21 +81,21 @@ export const sendMessage = async (
 	const lastMessage = currentContext[currentContext.length - 1];
 
 	let assistantId: string;
+	let prefillAssistantId: string | undefined;
 
 	if (hasContent) {
 		resolvedParentId = createUserAfter(resolvedParentId, promptContent);
 		assistantId = createAssistantAfter(resolvedParentId);
 	} else if (lastMessage?.role === "assistant") {
-		assistantId = lastMessage._metadata.uuid;
+		prefillAssistantId = lastMessage._metadata.uuid;
+		assistantId = createAssistantAfter(prefillAssistantId);
 	} else {
 		assistantId = createAssistantAfter(resolvedParentId);
 	}
 
-	const contextMessages = compilePathTo(assistantId);
+	const contextMessages = compilePathTo(prefillAssistantId ?? resolvedParentId);
 	const shouldPrefixAssistant =
-		provider.kind === "built-in" &&
-		lastMessage?.role === "assistant" &&
-		lastMessage._metadata.uuid === assistantId;
+		provider.kind === "built-in" && typeof prefillAssistantId !== "undefined";
 
 	setNodeStatus(assistantId, "streaming");
 	setActiveTarget(assistantId);
@@ -109,7 +112,10 @@ export const sendMessage = async (
 					role: message.role as "system" | "user" | "assistant",
 					content: message.content,
 				};
-				if (shouldPrefixAssistant && message._metadata.uuid === assistantId) {
+				if (
+					shouldPrefixAssistant &&
+					message._metadata.uuid === prefillAssistantId
+				) {
 					return {
 						...base,
 						providerOptions: {
@@ -122,7 +128,7 @@ export const sendMessage = async (
 			const stream = streamText({
 				model: provider.getBuiltInChatModel(),
 				messages: modelMessages,
-				temperature: 0.3,
+				temperature: generationParams?.temperature ?? 0.7,
 				abortSignal: abortController.signal,
 			});
 			await processFullStream(stream.fullStream, {
@@ -139,24 +145,31 @@ export const sendMessage = async (
 					role: m.role as "system" | "user" | "assistant",
 					content: m.content,
 				})) as ModelMessage[],
-				temperature: 0.3,
+				temperature: generationParams?.temperature ?? 0.7,
 				abortSignal: abortController.signal,
 			});
 			await processFullStream(stream.fullStream, {
 				append: (delta) => appendToNode(assistantId, delta),
+				includeProviderMetadataLogprobs: generationParams?.logprobs !== false,
 			});
 			setNodeStatus(assistantId, "final");
 		} else {
 			const modelMessages = toModelMessages(filteredContext);
+			const enableLogprobs = generationParams?.logprobs !== false;
 			const stream = streamText({
 				model: provider.openAIProvider.chatModel(provider.modelId),
 				messages: modelMessages,
-				temperature: 0.3,
+				temperature: generationParams?.temperature ?? 0.7,
+				...(generationParams?.maxTokens && {
+					maxTokens: generationParams.maxTokens,
+				}),
 				abortSignal: abortController.signal,
-				includeRawChunks: true,
-				providerOptions: buildChatLogprobOptions(
-					OPENAI_COMPATIBLE_PROVIDER_NAME,
-				),
+				includeRawChunks: enableLogprobs,
+				...(enableLogprobs && {
+					providerOptions: buildChatLogprobOptions(
+						OPENAI_COMPATIBLE_PROVIDER_NAME,
+					),
+				}),
 			});
 			await processFullStream(stream.fullStream, {
 				append: (delta) => appendToNode(assistantId, delta),

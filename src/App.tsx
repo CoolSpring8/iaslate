@@ -6,6 +6,7 @@ import { useShallow } from "zustand/react/shallow";
 import { buildOpenAICompatibleProvider } from "./ai/openaiCompatible";
 import ChatView from "./components/ChatView";
 import DiagramView from "./components/DiagramView";
+import FloatingGenerationSettings from "./components/FloatingGenerationSettings";
 import Header from "./components/Header";
 import SettingsModal from "./components/SettingsModal";
 import SnapshotIO from "./components/SnapshotIO";
@@ -44,6 +45,11 @@ const App = () => {
 		})),
 	);
 	const [view, setView] = useState<AppView>("chat");
+	const [isChatTreeVisible, setIsChatTreeVisible] = useState(false);
+	const [
+		isGenerationSettingsOpen,
+		{ toggle: toggleGenerationSettings, close: closeGenerationSettings },
+	] = useDisclosure(false);
 
 	const activeProvider = useMemo(
 		() => providers.find((p) => p.id === activeProviderId),
@@ -207,37 +213,45 @@ const App = () => {
 						modelStatus={builtInStatusText}
 						view={view}
 						onViewChange={setView}
+						isChatTreeVisible={isChatTreeVisible}
+						onToggleChatTree={() => {
+							setIsChatTreeVisible((current) => !current);
+						}}
+						isGenerationSettingsOpen={isGenerationSettingsOpen}
+						onToggleGenerationSettings={toggleGenerationSettings}
 						onClear={handleClearConversation}
 						onImport={triggerImport}
 						onExport={triggerExport}
 						onOpenSettings={onSettingsOpen}
 					/>
 					{view === "chat" ? (
-						<div className="flex-1 min-h-0">
-							<ChatView
-								messages={chatMessages}
-								isGenerating={isGenerating}
-								editingMessageId={editingMessageId}
-								onSend={send}
-								onStop={stop}
-								onDeleteMessage={deleteMessage}
-								onDetachMessage={detachMessage}
-								onEditStart={startEdit}
-								onEditSubmit={submitEdit}
-								onEditCancel={cancelEdit}
-								onPromptDirtyChange={setIsPromptDirty}
-								resetSignal={resetSignal}
-								onTokenReroll={rerollFromToken}
-							/>
-						</div>
-					) : view === "diagram" ? (
-						<div className="flex-1 overflow-hidden px-2 py-2">
-							<DiagramView
-								onNodeDoubleClick={activateThread}
-								onSetActiveNode={activateThread}
-								onDuplicateFromNode={duplicateFromNode}
-							/>
-						</div>
+						isChatTreeVisible ? (
+							<div className="flex-1 overflow-hidden px-2 py-2">
+								<DiagramView
+									onNodeDoubleClick={activateThread}
+									onSetActiveNode={activateThread}
+									onDuplicateFromNode={duplicateFromNode}
+								/>
+							</div>
+						) : (
+							<div className="flex-1 min-h-0">
+								<ChatView
+									messages={chatMessages}
+									isGenerating={isGenerating}
+									editingMessageId={editingMessageId}
+									onSend={send}
+									onStop={stop}
+									onDeleteMessage={deleteMessage}
+									onDetachMessage={detachMessage}
+									onEditStart={startEdit}
+									onEditSubmit={submitEdit}
+									onEditCancel={cancelEdit}
+									onPromptDirtyChange={setIsPromptDirty}
+									resetSignal={resetSignal}
+									onTokenReroll={rerollFromToken}
+								/>
+							</div>
+						)
 					) : (
 						<TextCompletionView
 							value={textContent}
@@ -259,6 +273,11 @@ const App = () => {
 							generatedPrefix={textSeed}
 						/>
 					)}
+					<FloatingGenerationSettings
+						opened={isGenerationSettingsOpen}
+						providerKind={providerKind}
+						onClose={closeGenerationSettings}
+					/>
 					<SettingsModal open={isSettingsOpen} onClose={onSettingsClose} />
 					<Toaster />
 				</div>

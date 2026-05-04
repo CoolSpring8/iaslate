@@ -1,6 +1,6 @@
 import type { LanguageModel } from "ai";
 
-export type AppView = "chat" | "diagram" | "text";
+export type AppView = "chat" | "text";
 
 export interface MessageMetadata {
 	uuid: string;
@@ -88,3 +88,9 @@ export type CompletionProviderReady = Extract<
 	ChatProviderReady,
 	{ kind: "openai-compatible" } | { kind: "dummy" }
 >;
+
+export interface GenerationParams {
+	temperature?: number;
+	maxTokens?: number;
+	logprobs?: boolean;
+}

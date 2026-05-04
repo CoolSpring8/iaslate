@@ -95,7 +95,7 @@ const TextCompletionView = ({
 		showTokenOverlay && tokenLogprobs && tokenLogprobs.length > 0;
 
 	return (
-		<div className="flex flex-1 min-h-0 flex-col gap-6 px-6 py-4">
+		<div className="flex w-full max-w-4xl mx-auto flex-1 min-h-0 flex-col gap-6 px-6 py-4">
 			<div className="flex items-center justify-between px-1">
 				<p className="text-sm font-medium text-slate-700 dark:text-slate-200">
 					Text Completion

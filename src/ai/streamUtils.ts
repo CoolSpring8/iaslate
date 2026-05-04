@@ -15,13 +15,6 @@ type StreamAppender = (delta: {
 	tokenLogprobs?: TokenLogprob[];
 }) => void;
 
-const toErrorMessage = (error: unknown) =>
-	typeof error === "string"
-		? error
-		: error instanceof Error
-			? error.message
-			: "Failed to stream response";
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null;
 
@@ -47,14 +40,16 @@ export const processFullStream = async (
 	{
 		append,
 		parseRawChunk,
+		includeProviderMetadataLogprobs = true,
 	}: {
 		append: StreamAppender;
 		parseRawChunk?: (raw: unknown) => StreamChunk | undefined;
+		includeProviderMetadataLogprobs?: boolean;
 	},
 ) => {
 	for await (const part of fullStream) {
 		if (part.type === "error") {
-			throw new Error(toErrorMessage(part.error));
+			throw part.error ?? new Error("Failed to stream response");
 		}
 
 		const delta: {
@@ -76,14 +71,16 @@ export const processFullStream = async (
 			}
 		}
 
-		const metadataTokenLogprobs = extractTokenLogprobsFromProviderMetadata(
-			part.providerMetadata,
-		);
-		if (metadataTokenLogprobs?.length) {
-			delta.tokenLogprobs = [
-				...(delta.tokenLogprobs ?? []),
-				...metadataTokenLogprobs,
-			];
+		if (includeProviderMetadataLogprobs) {
+			const metadataTokenLogprobs = extractTokenLogprobsFromProviderMetadata(
+				part.providerMetadata,
+			);
+			if (metadataTokenLogprobs?.length) {
+				delta.tokenLogprobs = [
+					...(delta.tokenLogprobs ?? []),
+					...metadataTokenLogprobs,
+				];
+			}
 		}
 
 		if (delta.content || delta.reasoning || delta.tokenLogprobs?.length) {

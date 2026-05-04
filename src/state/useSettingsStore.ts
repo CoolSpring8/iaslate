@@ -5,7 +5,12 @@ import { create } from "zustand";
 import { DUMMY_PROVIDER_NAME, fetchDummyModels } from "../ai/dummyProvider";
 import { fetchOpenAICompatibleModels } from "../ai/openaiCompatible";
 import { settingsKey } from "../constants/storageKeys";
-import type { BuiltInAvailability, ModelInfo, ProviderEntry } from "../types";
+import type {
+	BuiltInAvailability,
+	GenerationParams,
+	ModelInfo,
+	ProviderEntry,
+} from "../types";
 
 import { v4 as uuidv4 } from "uuid";
 
@@ -17,12 +22,41 @@ export const HEATMAP_THEMES = [
 
 export type HeatmapTheme = (typeof HEATMAP_THEMES)[number];
 
+const DEFAULT_GENERATION_PARAMS: GenerationParams = {
+	temperature: 0.7,
+	maxTokens: undefined,
+	logprobs: true,
+};
+
+export const MIN_GENERATION_MAX_TOKENS = 1;
+export const MAX_GENERATION_MAX_TOKENS = 32768;
+const GENERATION_PARAMS_PERSIST_DELAY_MS = 300;
+
+const normalizeMaxTokens = (value: unknown) => {
+	if (typeof value !== "number" || !Number.isFinite(value)) {
+		return undefined;
+	}
+	return Math.min(
+		MAX_GENERATION_MAX_TOKENS,
+		Math.max(MIN_GENERATION_MAX_TOKENS, Math.trunc(value)),
+	);
+};
+
+const normalizeGenerationParams = (
+	params?: Partial<GenerationParams>,
+): GenerationParams => ({
+	temperature: params?.temperature ?? DEFAULT_GENERATION_PARAMS.temperature,
+	maxTokens: normalizeMaxTokens(params?.maxTokens),
+	logprobs: params?.logprobs ?? DEFAULT_GENERATION_PARAMS.logprobs,
+});
+
 type StoredSettings = {
 	providers: ProviderEntry[];
 	activeProviderId: string | null;
 	enableBeforeUnloadWarning: boolean;
 	enableTokenHeatmap: boolean;
 	heatmapTheme: HeatmapTheme;
+	generationParams?: GenerationParams;
 	// Legacy fields retained for backward compatibility; they are ignored in favor of per-provider storage
 	models?: ModelInfo[];
 	activeModel?: string | null;
@@ -34,12 +68,14 @@ interface SettingsState {
 	enableBeforeUnloadWarning: boolean;
 	enableTokenHeatmap: boolean;
 	heatmapTheme: HeatmapTheme;
+	generationParams: GenerationParams;
 	builtInAvailability: BuiltInAvailability;
 	isHydrated: boolean;
 	setActiveModel: (model: string | null) => void;
 	setEnableBeforeUnloadWarning: (enabled: boolean) => Promise<void>;
 	setEnableTokenHeatmap: (enabled: boolean) => Promise<void>;
 	setHeatmapTheme: (theme: HeatmapTheme) => Promise<void>;
+	setGenerationParams: (params: Partial<GenerationParams>) => Promise<void>;
 	setBuiltInAvailability: (availability: BuiltInAvailability) => void;
 	refreshBuiltInAvailability: () => Promise<void>;
 	hydrate: () => Promise<void>;
@@ -84,6 +120,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			enableBeforeUnloadWarning,
 			enableTokenHeatmap,
 			heatmapTheme,
+			generationParams,
 		} = get();
 		await setValue(settingsKey, {
 			providers,
@@ -91,8 +128,48 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			enableBeforeUnloadWarning,
 			enableTokenHeatmap,
 			heatmapTheme,
+			generationParams,
 			...overrides,
 		});
+	};
+
+	let generationParamsPersistTimer: ReturnType<typeof setTimeout> | undefined;
+	let pendingGenerationParams: GenerationParams | undefined;
+	let isPersistingGenerationParams = false;
+
+	const flushGenerationParamsPersist = async () => {
+		if (isPersistingGenerationParams) {
+			return;
+		}
+		const generationParams = pendingGenerationParams;
+		if (!generationParams) {
+			return;
+		}
+		pendingGenerationParams = undefined;
+		isPersistingGenerationParams = true;
+		try {
+			await persistSettings({ generationParams });
+		} catch (error) {
+			console.error("Failed to persist generation parameters", error);
+		} finally {
+			isPersistingGenerationParams = false;
+			if (pendingGenerationParams) {
+				void flushGenerationParamsPersist();
+			}
+		}
+	};
+
+	const scheduleGenerationParamsPersist = (
+		generationParams: GenerationParams,
+	) => {
+		pendingGenerationParams = generationParams;
+		if (generationParamsPersistTimer) {
+			clearTimeout(generationParamsPersistTimer);
+		}
+		generationParamsPersistTimer = setTimeout(() => {
+			generationParamsPersistTimer = undefined;
+			void flushGenerationParamsPersist();
+		}, GENERATION_PARAMS_PERSIST_DELAY_MS);
 	};
 
 	return {
@@ -101,6 +178,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 		enableBeforeUnloadWarning: true,
 		enableTokenHeatmap: false,
 		heatmapTheme: "traffic-light",
+		generationParams: DEFAULT_GENERATION_PARAMS,
 		builtInAvailability: "unknown",
 		isHydrated: false,
 		setActiveModel: (model) => {
@@ -147,6 +225,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			set({ heatmapTheme: theme });
 			await persistSettings({ heatmapTheme: theme });
 		},
+		setGenerationParams: async (params) => {
+			const { generationParams } = get();
+			const updated = normalizeGenerationParams({
+				...generationParams,
+				...params,
+			});
+			set({ generationParams: updated });
+			scheduleGenerationParamsPersist(updated);
+		},
 		setBuiltInAvailability: (availability) =>
 			set({ builtInAvailability: availability }),
 		refreshBuiltInAvailability: async () => {
@@ -169,6 +256,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 						storedSettings.enableBeforeUnloadWarning ?? true,
 					enableTokenHeatmap: storedSettings.enableTokenHeatmap ?? false,
 					heatmapTheme: storedSettings.heatmapTheme ?? "traffic-light",
+					generationParams: normalizeGenerationParams(
+						storedSettings.generationParams,
+					),
 					isHydrated: true,
 				});
 			} else {
