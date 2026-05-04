@@ -1,14 +1,14 @@
 import { builtInAI } from "@built-in-ai/core";
-import { Drawer } from "@mantine/core";
-import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { useDisclosure } from "@mantine/hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { buildOpenAICompatibleProvider } from "./ai/openaiCompatible";
 import ChatView from "./components/ChatView";
+import DiagramView from "./components/DiagramView";
+import FloatingGenerationSettings from "./components/FloatingGenerationSettings";
 import Header from "./components/Header";
 import SettingsModal from "./components/SettingsModal";
-import SidePanel from "./components/SidePanel";
 import SnapshotIO from "./components/SnapshotIO";
 import TextCompletionView from "./components/TextCompletionView";
 import { useBeforeUnloadGuard } from "./hooks/useBeforeUnloadGuard";
@@ -45,14 +45,11 @@ const App = () => {
 		})),
 	);
 	const [view, setView] = useState<AppView>("chat");
-	const [chatSidePanelTab, setChatSidePanelTab] = useState<
-		"diagram" | "settings"
-	>("settings");
-	const isMobile = useMediaQuery("(max-width: 768px)", undefined, {
-		getInitialValueInEffect: false,
-	});
-	const [isSidePanelOpen, { toggle: toggleSidePanel, close: closeSidePanel }] =
-		useDisclosure(false);
+	const [isChatTreeVisible, setIsChatTreeVisible] = useState(false);
+	const [
+		isGenerationSettingsOpen,
+		{ toggle: toggleGenerationSettings, close: closeGenerationSettings },
+	] = useDisclosure(false);
 
 	const activeProvider = useMemo(
 		() => providers.find((p) => p.id === activeProviderId),
@@ -195,27 +192,6 @@ const App = () => {
 	const isModelSelectionSupported =
 		providerKind === "openai-compatible" || providerKind === "dummy";
 
-	const chatSidePanelElement = (
-		<SidePanel
-			providerKind={providerKind}
-			activeTab={chatSidePanelTab}
-			onActiveTabChange={setChatSidePanelTab}
-			onNodeDoubleClick={(id) => {
-				activateThread(id);
-				if (isMobile) closeSidePanel();
-			}}
-			onSetActiveNode={activateThread}
-			onDuplicateFromNode={duplicateFromNode}
-		/>
-	);
-
-	const textSidePanelElement = (
-		<SidePanel providerKind={providerKind} tabs={["settings"]} />
-	);
-
-	const sidePanelContent =
-		view === "chat" ? chatSidePanelElement : textSidePanelElement;
-
 	return (
 		<SnapshotIO
 			exportSnapshot={exportSnapshot}
@@ -237,16 +213,28 @@ const App = () => {
 						modelStatus={builtInStatusText}
 						view={view}
 						onViewChange={setView}
-						isSidePanelOpen={isSidePanelOpen}
-						onToggleSidePanel={toggleSidePanel}
+						isChatTreeVisible={isChatTreeVisible}
+						onToggleChatTree={() => {
+							setIsChatTreeVisible((current) => !current);
+						}}
+						isGenerationSettingsOpen={isGenerationSettingsOpen}
+						onToggleGenerationSettings={toggleGenerationSettings}
 						onClear={handleClearConversation}
 						onImport={triggerImport}
 						onExport={triggerExport}
 						onOpenSettings={onSettingsOpen}
 					/>
-					<div className="flex-1 min-h-0 flex">
-						<div className="min-w-0 min-h-0 flex-1">
-							{view === "chat" ? (
+					{view === "chat" ? (
+						isChatTreeVisible ? (
+							<div className="flex-1 overflow-hidden px-2 py-2">
+								<DiagramView
+									onNodeDoubleClick={activateThread}
+									onSetActiveNode={activateThread}
+									onDuplicateFromNode={duplicateFromNode}
+								/>
+							</div>
+						) : (
+							<div className="flex-1 min-h-0">
 								<ChatView
 									messages={chatMessages}
 									isGenerating={isGenerating}
@@ -262,57 +250,34 @@ const App = () => {
 									resetSignal={resetSignal}
 									onTokenReroll={rerollFromToken}
 								/>
-							) : (
-								<TextCompletionView
-									value={textContent}
-									isGenerating={isTextGenerating}
-									isPredictDisabled={!isModelSelectionSupported}
-									disabledReason={
-										!isModelSelectionSupported
-											? "Built-in AI supports chat only"
-											: undefined
-									}
-									onChange={(value) => {
-										overwriteTextContent(value);
-									}}
-									onPredict={predict}
-									onCancel={cancel}
-									tokenLogprobs={textTokenLogprobs}
-									onTokenReroll={rerollTextFromToken}
-									showTokenOverlay
-									generatedPrefix={textSeed}
-								/>
-							)}
-						</div>
-
-						{isSidePanelOpen && !isMobile ? (
-							<aside className="shrink-0 w-[420px] lg:w-[520px] min-w-0 min-h-0 overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.04)] dark:shadow-[-2px_0_8px_rgba(0,0,0,0.2)]">
-								{sidePanelContent}
-							</aside>
-						) : null}
-					</div>
-
-					{isMobile ? (
-						<Drawer
-							opened={isSidePanelOpen}
-							onClose={closeSidePanel}
-							position="right"
-							size="sm"
-							title="Side Panel"
-							styles={{
-								content: {
-									display: "flex",
-									flexDirection: "column",
-								},
-								body: {
-									flex: 1,
-									minHeight: 0,
-								},
+							</div>
+						)
+					) : (
+						<TextCompletionView
+							value={textContent}
+							isGenerating={isTextGenerating}
+							isPredictDisabled={!isModelSelectionSupported}
+							disabledReason={
+								!isModelSelectionSupported
+									? "Built-in AI supports chat only"
+									: undefined
+							}
+							onChange={(value) => {
+								overwriteTextContent(value);
 							}}
-						>
-							{sidePanelContent}
-						</Drawer>
-					) : null}
+							onPredict={predict}
+							onCancel={cancel}
+							tokenLogprobs={textTokenLogprobs}
+							onTokenReroll={rerollTextFromToken}
+							showTokenOverlay
+							generatedPrefix={textSeed}
+						/>
+					)}
+					<FloatingGenerationSettings
+						opened={isGenerationSettingsOpen}
+						providerKind={providerKind}
+						onClose={closeGenerationSettings}
+					/>
 					<SettingsModal open={isSettingsOpen} onClose={onSettingsClose} />
 					<Toaster />
 				</div>

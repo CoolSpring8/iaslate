@@ -1,4 +1,5 @@
 import { SegmentedControl, Select, UnstyledButton } from "@mantine/core";
+import { twJoin } from "tailwind-merge";
 import type { AppView, ModelInfo } from "../types";
 
 interface HeaderProps {
@@ -10,8 +11,10 @@ interface HeaderProps {
 	modelStatus?: string;
 	view: AppView;
 	onViewChange: (value: AppView) => void;
-	isSidePanelOpen: boolean;
-	onToggleSidePanel: () => void;
+	isChatTreeVisible: boolean;
+	onToggleChatTree: () => void;
+	isGenerationSettingsOpen: boolean;
+	onToggleGenerationSettings: () => void;
 	onClear: () => void;
 	onImport: () => void;
 	onExport: () => void;
@@ -36,24 +39,28 @@ const Header = ({
 	modelStatus,
 	view,
 	onViewChange,
-	isSidePanelOpen,
-	onToggleSidePanel,
+	isChatTreeVisible,
+	onToggleChatTree,
+	isGenerationSettingsOpen,
+	onToggleGenerationSettings,
 	onClear,
 	onImport,
 	onExport,
 	onOpenSettings,
-}: HeaderProps) => (
-	<header className="px-4 py-2">
-		<div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-y-2">
+}: HeaderProps) => {
+	const isChatMode = view === "chat";
+
+	return (
+		<header className="flex items-center px-4 py-2">
 			<div className="flex items-center gap-2">
 				<h1 className="text-xl font-bold font-mono">iaslate</h1>
 				{modelSelectorDisabled ? (
-					<div className="flex h-[2.25rem] w-full sm:w-64 items-center rounded-md border border-solid border-slate-300 bg-white px-3 text-sm leading-[1.1] text-slate-900 shadow-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+					<div className="flex h-[2.25rem] w-64 items-center rounded-md border border-solid border-slate-300 bg-white px-3 text-sm leading-[1.1] text-slate-900 shadow-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
 						{modelStatus ?? "Model selection disabled"}
 					</div>
 				) : (
 					<Select
-						className="w-full sm:w-64"
+						className="w-64"
 						data={models.map((model) => ({
 							value: model.id,
 							label: model.name || model.id,
@@ -66,7 +73,7 @@ const Header = ({
 					/>
 				)}
 			</div>
-			<div className="ml-0 sm:ml-4">
+			<div className="ml-4">
 				<SegmentedControl
 					size="sm"
 					value={view}
@@ -95,11 +102,46 @@ const Header = ({
 			</div>
 			<div className="ml-auto flex gap-4">
 				<UnstyledButton
-					className="i-lucide-panel-right w-5 h-5"
-					title={isSidePanelOpen ? "Hide side panel" : "Show side panel"}
-					aria-label={isSidePanelOpen ? "Hide side panel" : "Show side panel"}
-					aria-pressed={isSidePanelOpen}
-					onClick={onToggleSidePanel}
+					className={twJoin(
+						"i-lucide-git-branch w-5 h-5 transition-colors",
+						isChatMode && isChatTreeVisible
+							? "text-blue-600 dark:text-blue-400"
+							: "text-slate-700 dark:text-slate-200",
+						!isChatMode && "cursor-not-allowed opacity-35",
+					)}
+					title={
+						isChatMode
+							? isChatTreeVisible
+								? "Show linear chat"
+								: "Show tree"
+							: "Tree is available in Chat mode"
+					}
+					aria-label={
+						isChatMode && isChatTreeVisible ? "Show linear chat" : "Show tree"
+					}
+					aria-pressed={isChatMode ? isChatTreeVisible : undefined}
+					disabled={!isChatMode}
+					onClick={onToggleChatTree}
+				/>
+				<UnstyledButton
+					className={twJoin(
+						"i-lucide-sliders-horizontal w-5 h-5 transition-colors",
+						isGenerationSettingsOpen
+							? "text-blue-600 dark:text-blue-400"
+							: "text-slate-700 dark:text-slate-200",
+					)}
+					title={
+						isGenerationSettingsOpen
+							? "Hide generation controls"
+							: "Show generation controls"
+					}
+					aria-label={
+						isGenerationSettingsOpen
+							? "Hide generation controls"
+							: "Show generation controls"
+					}
+					aria-pressed={isGenerationSettingsOpen}
+					onClick={onToggleGenerationSettings}
 				/>
 				<UnstyledButton
 					className="i-lucide-eraser w-5 h-5"
@@ -122,8 +164,8 @@ const Header = ({
 					onClick={onOpenSettings}
 				/>
 			</div>
-		</div>
-	</header>
-);
+		</header>
+	);
+};
 
 export default Header;
