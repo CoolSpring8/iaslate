@@ -35,7 +35,6 @@ type StoredSettings = {
 	enableBeforeUnloadWarning: boolean;
 	enableTokenHeatmap: boolean;
 	heatmapTheme: HeatmapTheme;
-	showChatDiagram?: boolean;
 	generationParams?: GenerationParams;
 	// Legacy fields retained for backward compatibility; they are ignored in favor of per-provider storage
 	models?: ModelInfo[];
@@ -48,7 +47,6 @@ interface SettingsState {
 	enableBeforeUnloadWarning: boolean;
 	enableTokenHeatmap: boolean;
 	heatmapTheme: HeatmapTheme;
-	showChatDiagram: boolean;
 	generationParams: GenerationParams;
 	builtInAvailability: BuiltInAvailability;
 	isHydrated: boolean;
@@ -56,7 +54,6 @@ interface SettingsState {
 	setEnableBeforeUnloadWarning: (enabled: boolean) => Promise<void>;
 	setEnableTokenHeatmap: (enabled: boolean) => Promise<void>;
 	setHeatmapTheme: (theme: HeatmapTheme) => Promise<void>;
-	setShowChatDiagram: (show: boolean) => Promise<void>;
 	setGenerationParams: (params: Partial<GenerationParams>) => Promise<void>;
 	setBuiltInAvailability: (availability: BuiltInAvailability) => void;
 	refreshBuiltInAvailability: () => Promise<void>;
@@ -102,7 +99,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			enableBeforeUnloadWarning,
 			enableTokenHeatmap,
 			heatmapTheme,
-			showChatDiagram,
 			generationParams,
 		} = get();
 		await setValue(settingsKey, {
@@ -111,7 +107,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			enableBeforeUnloadWarning,
 			enableTokenHeatmap,
 			heatmapTheme,
-			showChatDiagram,
 			generationParams,
 			...overrides,
 		});
@@ -123,7 +118,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 		enableBeforeUnloadWarning: true,
 		enableTokenHeatmap: false,
 		heatmapTheme: "traffic-light",
-		showChatDiagram: true,
 		generationParams: DEFAULT_GENERATION_PARAMS,
 		builtInAvailability: "unknown",
 		isHydrated: false,
@@ -171,10 +165,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 			set({ heatmapTheme: theme });
 			await persistSettings({ heatmapTheme: theme });
 		},
-		setShowChatDiagram: async (show) => {
-			set({ showChatDiagram: show });
-			await persistSettings({ showChatDiagram: show });
-		},
 		setGenerationParams: async (params) => {
 			const { generationParams } = get();
 			const updated = { ...generationParams, ...params };
@@ -203,7 +193,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 						storedSettings.enableBeforeUnloadWarning ?? true,
 					enableTokenHeatmap: storedSettings.enableTokenHeatmap ?? false,
 					heatmapTheme: storedSettings.heatmapTheme ?? "traffic-light",
-					showChatDiagram: storedSettings.showChatDiagram ?? true,
 					generationParams: {
 						...DEFAULT_GENERATION_PARAMS,
 						...storedSettings.generationParams,
