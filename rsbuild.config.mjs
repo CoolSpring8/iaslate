@@ -17,6 +17,7 @@ export default defineConfig({
 		inlineStyles: true,
 	},
 	html: {
+		title: "iaslate",
 		inject: "body",
 	},
 });
