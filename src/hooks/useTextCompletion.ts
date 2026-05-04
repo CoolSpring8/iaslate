@@ -15,6 +15,7 @@ import type {
 	TokenAlternative,
 	TokenLogprob,
 } from "../types";
+import { errorToToastMessage } from "../utils/errors";
 
 interface UseTextCompletionOptions {
 	ensureCompletionReady: () => CompletionProviderReady | null;
@@ -118,7 +119,7 @@ export const useTextCompletion = ({
 					return;
 				}
 				console.error(error);
-				toast.error("Failed to generate completion");
+				toast.error(errorToToastMessage(error));
 			} finally {
 				if (abortControllerRef.current === abortController) {
 					setIsGenerating(false);

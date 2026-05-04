@@ -15,13 +15,6 @@ type StreamAppender = (delta: {
 	tokenLogprobs?: TokenLogprob[];
 }) => void;
 
-const toErrorMessage = (error: unknown) =>
-	typeof error === "string"
-		? error
-		: error instanceof Error
-			? error.message
-			: "Failed to stream response";
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null;
 
@@ -56,7 +49,7 @@ export const processFullStream = async (
 ) => {
 	for await (const part of fullStream) {
 		if (part.type === "error") {
-			throw new Error(toErrorMessage(part.error));
+			throw part.error ?? new Error("Failed to stream response");
 		}
 
 		const delta: {

@@ -81,21 +81,23 @@ export const sendMessage = async (
 	const lastMessage = currentContext[currentContext.length - 1];
 
 	let assistantId: string;
+	let isAssistantPrefill = false;
 
 	if (hasContent) {
 		resolvedParentId = createUserAfter(resolvedParentId, promptContent);
 		assistantId = createAssistantAfter(resolvedParentId);
 	} else if (lastMessage?.role === "assistant") {
 		assistantId = lastMessage._metadata.uuid;
+		isAssistantPrefill = true;
 	} else {
 		assistantId = createAssistantAfter(resolvedParentId);
 	}
 
-	const contextMessages = compilePathTo(assistantId);
+	const contextMessages = compilePathTo(
+		isAssistantPrefill ? assistantId : resolvedParentId,
+	);
 	const shouldPrefixAssistant =
-		provider.kind === "built-in" &&
-		lastMessage?.role === "assistant" &&
-		lastMessage._metadata.uuid === assistantId;
+		provider.kind === "built-in" && isAssistantPrefill;
 
 	setNodeStatus(assistantId, "streaming");
 	setActiveTarget(assistantId);

@@ -21,6 +21,7 @@ import type {
 	TokenLogprob,
 } from "../types";
 import { deleteMessage } from "../utils/chatActions";
+import { errorToToastMessage } from "../utils/errors";
 import { useStreamManager } from "./useStreamManager";
 
 interface UseConversationControllerOptions {
@@ -252,7 +253,7 @@ export const useConversationController = ({
 				});
 			} catch (error) {
 				console.error(error);
-				toast.error("Failed to generate response");
+				toast.error(errorToToastMessage(error));
 			}
 		},
 		[
@@ -477,7 +478,7 @@ export const useConversationController = ({
 						setNodeStatus(assistantId, "draft");
 					} else {
 						setNodeStatus(assistantId, "error");
-						toast.error("Failed to regenerate from token");
+						toast.error(errorToToastMessage(error));
 						console.error(error);
 					}
 				} finally {
