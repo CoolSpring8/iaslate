@@ -1,43 +1,30 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Shape
 
-- Source lives in `src/` (`index.tsx`, `App.tsx`, `index.css`). Build output goes to `dist/`.
-- Providers only in `index.tsx` (e.g., `MantineProvider`). Settings and provider state live in a shared store (`src/state/useSettingsStore.ts`); conversation state and snapshots live in the tree store (`src/tree/useConversationTree.ts`, `src/tree/types.ts`), and AI provider helpers live in `src/ai/openaiCompatible.ts`.
-- Components under `src/components/` include their own UI behavior (hover/edit states, popovers, menus) rather than being purely presentational.
-- Key config: `rsbuild.config.mjs`, `tsconfig.json`, `tailwind.config.js`, `postcss.config.js`, `biome.json`.
+- TypeScript + React 18 app using Mantine, Tailwind, Rsbuild, Zustand, and Bun.
+- Root providers live in `src/index.tsx`.
+- Settings/provider state lives in `src/state/useSettingsStore.ts`.
+- Conversation tree state lives in `src/tree/useConversationTree.ts` and `src/tree/types.ts`.
+- AI provider helpers live in `src/ai/`.
 
-## Build, Test, and Development Commands
+## Commands
 
-- Install: `bun install` (use Bun for everything; a `bun.lock` is present).
-- Dev server: `bun dev` (Rsbuild) — starts hot‑reload and opens the browser.
-- Production build: `bun build-dist` — emits static assets to `dist/` (scripts/styles are inlined by Rsbuild config).
+- Use Bun.
+- Install: `bun install`
+- Dev server: assume `bun dev` is already running unless asked to start it.
+- Format: `bunx biome check --write .`
+- Type-check: `bunx tsc --noEmit`
+- Build: `bun build-dist`
 
-## Coding Style & Naming Conventions
+## UI Verification
 
-- Language: TypeScript + React 18; Mantine for UI; Tailwind for styling.
-- Indentation: one tab (Biome default) except for Markdown files where space indentation is used. Keep code concise and self‑documenting.
-- Formatting: use Biome. Run `bunx biome check --write .` to format and organize imports.
-- Type-checking: use tsc. Run `bunx tsc --noEmit` to check for type errors.
-- Components: keep UI logic close to the component (e.g., hover/edit toggles in `MessageItem`, menu interactions in `DiagramView`); shared conversation/tree logic belongs in the store.
-- CSS: prefer Tailwind utilities; add global styles in `src/index.css` only when necessary.
-- Tailwind preflight is not enabled; when using `border`, also include `border-solid` (and set a color) to avoid browser defaults.
+- For UI changes, use browser-use with the in-app browser at `http://localhost:8080/`.
+- Prefer browser verification over shell curls for localhost UI checks.
 
-## Providers & Capabilities
+## App Constraints
 
-- OpenAI-compatible: supports chat and text completion views.
-- Built-in AI (Chrome/Edge): chat-only; text view is disabled.
-
-## Validation & Browser Use
-
-- Assume `bun dev` is already running locally; don’t start it from the agent unless explicitly asked.
-- Browser use is the default for UI verification; use the browser-use skill with the in-app browser backend and navigate to `http://localhost:8080/` to check the UI after changes.
-
-## Commit & Pull Request Guidelines
-
-- Use Conventional Commits (e.g., `feat:`, `fix:`, `docs:`). Keep diffs focused; avoid drive‑by refactors.
-- PRs should include a clear summary, rationale, screenshots/GIFs for UI changes, and testing steps.
-
-## Security & Configuration Tips
-
-- Never commit API keys. Keys are user‑provided and stored client‑side (IndexedDB). Avoid server code or bundling secrets into `dist/`.
+- OpenAI-compatible providers support chat and text completion.
+- Built-in AI supports chat only; text completion is disabled.
+- Tailwind preflight is not enabled. When using `border`, include `border-solid` and an explicit color.
+- API keys are user-provided and stored client-side; never commit secrets or bundle keys into `dist`.
