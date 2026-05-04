@@ -91,10 +91,6 @@ export type CompletionProviderReady = Extract<
 
 export interface GenerationParams {
 	temperature?: number;
-	topP?: number;
-	minP?: number;
-	topK?: number;
-	repetitionPenalty?: number;
 	maxTokens?: number;
 	logprobs?: boolean;
 }

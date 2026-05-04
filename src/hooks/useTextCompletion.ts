@@ -78,6 +78,8 @@ export const useTextCompletion = ({
 								});
 							}
 						},
+						includeProviderMetadataLogprobs:
+							generationParams?.logprobs !== false,
 					});
 				} else {
 					// OpenAI-compatible provider
@@ -86,9 +88,6 @@ export const useTextCompletion = ({
 						model: readiness.openAIProvider.completionModel(readiness.modelId),
 						prompt: seedText,
 						temperature: generationParams?.temperature ?? 0.7,
-						...(generationParams?.topP !== undefined && {
-							topP: generationParams.topP,
-						}),
 						...(generationParams?.maxTokens && {
 							maxTokens: generationParams.maxTokens,
 						}),

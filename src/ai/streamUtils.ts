@@ -47,9 +47,11 @@ export const processFullStream = async (
 	{
 		append,
 		parseRawChunk,
+		includeProviderMetadataLogprobs = true,
 	}: {
 		append: StreamAppender;
 		parseRawChunk?: (raw: unknown) => StreamChunk | undefined;
+		includeProviderMetadataLogprobs?: boolean;
 	},
 ) => {
 	for await (const part of fullStream) {
@@ -76,14 +78,16 @@ export const processFullStream = async (
 			}
 		}
 
-		const metadataTokenLogprobs = extractTokenLogprobsFromProviderMetadata(
-			part.providerMetadata,
-		);
-		if (metadataTokenLogprobs?.length) {
-			delta.tokenLogprobs = [
-				...(delta.tokenLogprobs ?? []),
-				...metadataTokenLogprobs,
-			];
+		if (includeProviderMetadataLogprobs) {
+			const metadataTokenLogprobs = extractTokenLogprobsFromProviderMetadata(
+				part.providerMetadata,
+			);
+			if (metadataTokenLogprobs?.length) {
+				delta.tokenLogprobs = [
+					...(delta.tokenLogprobs ?? []),
+					...metadataTokenLogprobs,
+				];
+			}
 		}
 
 		if (delta.content || delta.reasoning || delta.tokenLogprobs?.length) {

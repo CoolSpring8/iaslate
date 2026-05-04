@@ -1,5 +1,5 @@
 import { NumberInput, Slider, Stack, Switch, Text, Title } from "@mantine/core";
-import { useMemo } from "react";
+import type { ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../state/useSettingsStore";
 import type { ProviderKind } from "../types";
@@ -7,6 +7,74 @@ import type { ProviderKind } from "../types";
 interface GenerationSettingsProps {
 	providerKind: ProviderKind;
 }
+
+interface ControlBlockProps {
+	title: string;
+	value?: string;
+	description: string;
+	children: ReactNode;
+}
+
+const providerSettings: Record<
+	ProviderKind,
+	{
+		temperature: boolean;
+		maxTokens: boolean;
+		logprobs: boolean;
+		description: string;
+	}
+> = {
+	"openai-compatible": {
+		temperature: true,
+		maxTokens: true,
+		logprobs: true,
+		description: "Chat and text completion controls for the active model.",
+	},
+	"built-in": {
+		temperature: true,
+		maxTokens: true,
+		logprobs: false,
+		description: "Built-in chat supports sampling and length controls.",
+	},
+	dummy: {
+		temperature: false,
+		maxTokens: false,
+		logprobs: true,
+		description: "Dummy streams expose token probabilities for UI checks.",
+	},
+};
+
+const formatTemperature = (value: number) =>
+	value.toFixed(2).replace(/\.00$/, "");
+
+const ControlBlock = ({
+	title,
+	value,
+	description,
+	children,
+}: ControlBlockProps) => (
+	<section className="rounded-md border border-solid border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/60">
+		<div className="mb-3 flex items-start justify-between gap-3">
+			<div>
+				<Text size="sm" fw={600}>
+					{title}
+				</Text>
+				<Text size="xs" c="dimmed">
+					{description}
+				</Text>
+			</div>
+			{value ? (
+				<Text
+					size="xs"
+					className="shrink-0 rounded border border-solid border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+				>
+					{value}
+				</Text>
+			) : null}
+		</div>
+		{children}
+	</section>
+);
 
 const GenerationSettings = ({ providerKind }: GenerationSettingsProps) => {
 	const { generationParams, setGenerationParams } = useSettingsStore(
@@ -16,215 +84,55 @@ const GenerationSettings = ({ providerKind }: GenerationSettingsProps) => {
 		})),
 	);
 
-	const availableSettings = useMemo(() => {
-		switch (providerKind) {
-			case "openai-compatible":
-				return {
-					temperature: true,
-					topP: true,
-					minP: true,
-					topK: true,
-					repetitionPenalty: true,
-					maxTokens: true,
-					logprobs: true,
-				};
-			case "built-in":
-				return {
-					temperature: true,
-					topP: false,
-					minP: false,
-					topK: true,
-					repetitionPenalty: false,
-					maxTokens: true,
-					logprobs: false,
-				};
-			case "dummy":
-				return {
-					temperature: false,
-					topP: false,
-					minP: false,
-					topK: false,
-					repetitionPenalty: false,
-					maxTokens: false,
-					logprobs: true,
-				};
-			default:
-				return {
-					temperature: true,
-					topP: true,
-					minP: false,
-					topK: false,
-					repetitionPenalty: false,
-					maxTokens: true,
-					logprobs: true,
-				};
-		}
-	}, [providerKind]);
+	const availableSettings = providerSettings[providerKind];
+	const temperature = generationParams.temperature ?? 0.7;
+	const logprobs = generationParams.logprobs ?? true;
 
 	return (
-		<div className="h-full flex flex-col">
-			<div className="px-3 py-2 border-b border-solid border-slate-200 dark:border-slate-700">
-				<Title order={5} className="text-slate-700 dark:text-slate-200">
-					Generation Settings
+		<div className="h-full flex flex-col bg-slate-50/50 dark:bg-slate-950/30">
+			<div className="px-3 py-3 border-b border-solid border-slate-200 dark:border-slate-800">
+				<Title order={5} className="text-slate-800 dark:text-slate-100">
+					Generation
 				</Title>
 				<Text size="xs" c="dimmed">
-					Adjust parameters for message generation
+					{availableSettings.description}
 				</Text>
 			</div>
 			<div className="flex-1 overflow-y-auto px-3 py-3">
-				<Stack gap="lg">
-					{availableSettings.temperature && (
-						<div>
-							<div className="flex items-center justify-between mb-2">
-								<Text size="sm" fw={500}>
-									Temperature
-								</Text>
-								<Text size="xs" c="dimmed">
-									{generationParams.temperature ?? 0.7}
-								</Text>
-							</div>
+				<Stack gap="sm">
+					{availableSettings.temperature ? (
+						<ControlBlock
+							title="Temperature"
+							value={formatTemperature(temperature)}
+							description="Lower is steadier; higher is more varied."
+						>
 							<Slider
-								value={generationParams.temperature ?? 0.7}
+								value={temperature}
 								onChange={(value) => {
 									void setGenerationParams({ temperature: value });
 								}}
 								min={0}
 								max={2}
 								step={0.05}
-								marks={[
-									{ value: 0, label: "0" },
-									{ value: 1, label: "1" },
-									{ value: 2, label: "2" },
-								]}
 								size="sm"
+								aria-label="Temperature"
 							/>
-							<Text size="xs" c="dimmed" mt="xs">
-								Lower = more focused, higher = more creative
-							</Text>
-						</div>
-					)}
-
-					{availableSettings.topP && (
-						<div>
-							<div className="flex items-center justify-between mb-2">
-								<Text size="sm" fw={500}>
-									Top-P (Nucleus Sampling)
-								</Text>
-								<Text size="xs" c="dimmed">
-									{generationParams.topP ?? 1}
-								</Text>
+							<div className="mt-2 flex justify-between text-[11px] leading-none text-slate-500 dark:text-slate-400">
+								<span>Focused</span>
+								<span>Balanced</span>
+								<span>Creative</span>
 							</div>
-							<Slider
-								value={generationParams.topP ?? 1}
-								onChange={(value) => {
-									void setGenerationParams({ topP: value });
-								}}
-								min={0}
-								max={1}
-								step={0.05}
-								marks={[
-									{ value: 0, label: "0" },
-									{ value: 0.5, label: "0.5" },
-									{ value: 1, label: "1" },
-								]}
-								size="sm"
-							/>
-							<Text size="xs" c="dimmed" mt="xs">
-								Cumulative probability cutoff for token selection
-							</Text>
-						</div>
-					)}
+						</ControlBlock>
+					) : null}
 
-					{availableSettings.minP && (
-						<div>
-							<div className="flex items-center justify-between mb-2">
-								<Text size="sm" fw={500}>
-									Min-P
-								</Text>
-								<Text size="xs" c="dimmed">
-									{generationParams.minP ?? 0}
-								</Text>
-							</div>
-							<Slider
-								value={generationParams.minP ?? 0}
-								onChange={(value) => {
-									void setGenerationParams({ minP: value });
-								}}
-								min={0}
-								max={1}
-								step={0.01}
-								size="sm"
-							/>
-							<Text size="xs" c="dimmed" mt="xs">
-								Minimum probability threshold (relative to top token)
-							</Text>
-						</div>
-					)}
-
-					{availableSettings.topK && (
-						<div>
-							<div className="flex items-center justify-between mb-2">
-								<Text size="sm" fw={500}>
-									Top-K
-								</Text>
-								<Text size="xs" c="dimmed">
-									{generationParams.topK ?? "off"}
-								</Text>
-							</div>
-							<NumberInput
-								value={generationParams.topK ?? ""}
-								onChange={(value) => {
-									void setGenerationParams({
-										topK: value === "" ? undefined : Number(value),
-									});
-								}}
-								min={1}
-								max={100}
-								placeholder="Off (no limit)"
-								size="xs"
-							/>
-							<Text size="xs" c="dimmed" mt="xs">
-								Number of top tokens to consider
-							</Text>
-						</div>
-					)}
-
-					{availableSettings.repetitionPenalty && (
-						<div>
-							<div className="flex items-center justify-between mb-2">
-								<Text size="sm" fw={500}>
-									Repetition Penalty
-								</Text>
-								<Text size="xs" c="dimmed">
-									{generationParams.repetitionPenalty ?? 1}
-								</Text>
-							</div>
-							<Slider
-								value={generationParams.repetitionPenalty ?? 1}
-								onChange={(value) => {
-									void setGenerationParams({ repetitionPenalty: value });
-								}}
-								min={1}
-								max={2}
-								step={0.05}
-								marks={[
-									{ value: 1, label: "1" },
-									{ value: 1.5, label: "1.5" },
-									{ value: 2, label: "2" },
-								]}
-								size="sm"
-							/>
-							<Text size="xs" c="dimmed" mt="xs">
-								Penalizes repeated tokens (1 = no penalty)
-							</Text>
-						</div>
-					)}
-
-					{availableSettings.maxTokens && (
-						<div>
-							<Text size="sm" fw={500} mb="xs">
-								Max Tokens
-							</Text>
+					{availableSettings.maxTokens ? (
+						<ControlBlock
+							title="Max tokens"
+							value={
+								generationParams.maxTokens?.toLocaleString() ?? "Unlimited"
+							}
+							description="Optional cap for the next generated response."
+						>
 							<NumberInput
 								value={generationParams.maxTokens ?? ""}
 								onChange={(value) => {
@@ -234,36 +142,36 @@ const GenerationSettings = ({ providerKind }: GenerationSettingsProps) => {
 								}}
 								min={1}
 								max={32768}
-								placeholder="No limit"
-								size="xs"
-							/>
-							<Text size="xs" c="dimmed" mt="xs">
-								Maximum tokens to generate (blank = no limit)
-							</Text>
-						</div>
-					)}
-
-					{availableSettings.logprobs && (
-						<div className="flex items-center justify-between">
-							<div>
-								<Text size="sm" fw={500}>
-									Token Logprobs
-								</Text>
-								<Text size="xs" c="dimmed">
-									Enable token probability inspection
-								</Text>
-							</div>
-							<Switch
-								checked={generationParams.logprobs ?? true}
-								onChange={(event) => {
-									void setGenerationParams({
-										logprobs: event.currentTarget.checked,
-									});
-								}}
+								placeholder="Unlimited"
 								size="sm"
+								aria-label="Max tokens"
+								hideControls
 							/>
-						</div>
-					)}
+						</ControlBlock>
+					) : null}
+
+					{availableSettings.logprobs ? (
+						<ControlBlock
+							title="Token logprobs"
+							description="Collect probabilities for token inspection."
+						>
+							<div className="flex items-center justify-between gap-3">
+								<Text size="sm" c={logprobs ? undefined : "dimmed"}>
+									{logprobs ? "Enabled" : "Disabled"}
+								</Text>
+								<Switch
+									checked={logprobs}
+									onChange={(event) => {
+										void setGenerationParams({
+											logprobs: event.currentTarget.checked,
+										});
+									}}
+									size="sm"
+									aria-label="Toggle token logprobs"
+								/>
+							</div>
+						</ControlBlock>
+					) : null}
 				</Stack>
 			</div>
 		</div>

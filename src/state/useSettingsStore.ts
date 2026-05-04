@@ -24,10 +24,17 @@ export type HeatmapTheme = (typeof HEATMAP_THEMES)[number];
 
 const DEFAULT_GENERATION_PARAMS: GenerationParams = {
 	temperature: 0.7,
-	topP: 1,
 	maxTokens: undefined,
 	logprobs: true,
 };
+
+const normalizeGenerationParams = (
+	params?: Partial<GenerationParams>,
+): GenerationParams => ({
+	temperature: params?.temperature ?? DEFAULT_GENERATION_PARAMS.temperature,
+	maxTokens: params?.maxTokens,
+	logprobs: params?.logprobs ?? DEFAULT_GENERATION_PARAMS.logprobs,
+});
 
 type StoredSettings = {
 	providers: ProviderEntry[];
@@ -167,7 +174,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 		},
 		setGenerationParams: async (params) => {
 			const { generationParams } = get();
-			const updated = { ...generationParams, ...params };
+			const updated = normalizeGenerationParams({
+				...generationParams,
+				...params,
+			});
 			set({ generationParams: updated });
 			await persistSettings({ generationParams: updated });
 		},
@@ -193,10 +203,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 						storedSettings.enableBeforeUnloadWarning ?? true,
 					enableTokenHeatmap: storedSettings.enableTokenHeatmap ?? false,
 					heatmapTheme: storedSettings.heatmapTheme ?? "traffic-light",
-					generationParams: {
-						...DEFAULT_GENERATION_PARAMS,
-						...storedSettings.generationParams,
-					},
+					generationParams: normalizeGenerationParams(
+						storedSettings.generationParams,
+					),
 					isHydrated: true,
 				});
 			} else {

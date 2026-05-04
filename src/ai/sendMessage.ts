@@ -150,6 +150,7 @@ export const sendMessage = async (
 			});
 			await processFullStream(stream.fullStream, {
 				append: (delta) => appendToNode(assistantId, delta),
+				includeProviderMetadataLogprobs: generationParams?.logprobs !== false,
 			});
 			setNodeStatus(assistantId, "final");
 		} else {
@@ -159,9 +160,6 @@ export const sendMessage = async (
 				model: provider.openAIProvider.chatModel(provider.modelId),
 				messages: modelMessages,
 				temperature: generationParams?.temperature ?? 0.7,
-				...(generationParams?.topP !== undefined && {
-					topP: generationParams.topP,
-				}),
 				...(generationParams?.maxTokens && {
 					maxTokens: generationParams.maxTokens,
 				}),
