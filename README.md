@@ -1,39 +1,59 @@
 # iaslate
 
-A tiny browser‑based chat UI packaged as a single static HTML file. It is intended for lightweight, one-off usage.
+iaslate is a portable AI workspace for branching chats, local snapshots, and bring-your-own-model sessions. It runs entirely in the browser and builds into a single static HTML file, so it stays easy to move, host, archive, or use for one-off sessions.
+
+Instead of treating a chat as one flat transcript, iaslate keeps the shape of the conversation visible. You can edit earlier turns, split a reply into a new branch, inspect the tree, and export the full session when an experiment is worth keeping.
+
+## Highlights
+
+- Branch-first conversations: edit, delete, split, duplicate, and revisit alternate paths.
+- Tree view: switch from the linear chat to a visual map of the current conversation.
+- Local snapshots: import and export JSON files that preserve every branch, not just the active path.
+- Provider choice: connect any OpenAI-compatible endpoint, sync its model list, or use Chrome/Edge built-in AI when available.
+- Text continuation mode: use OpenAI-compatible providers for direct text completion outside the chat flow.
+- Generation controls: tune temperature, max tokens, and token logprobs where the selected provider supports them.
+
+## Provider Support
+
+iaslate is a bring-your-own-provider app. API keys and provider settings are entered by the user in the browser.
+
+- **OpenAI-compatible APIs** support chat and text completion. Enter the API base URL, add an API key if required, and sync models from the provider.
+- **Built-in AI in Chrome/Edge** supports chat only. No API key is required, but availability depends on the browser and local model state.
+
+## Privacy Model
+
+iaslate does not provide a backend. API keys are stored locally in the browser with IndexedDB, and requests are sent directly from the client to the selected provider.
+
+Treat keys in iaslate as keys exposed to a local browser app. Do not use credentials you would not trust in client-side JavaScript.
+
+## Usage
+
+1. Open Settings.
+2. Add an OpenAI-compatible provider or select Built-in AI.
+3. Choose a model when the provider exposes one.
+4. Start chatting, then use the branch, import, export, and generation-control buttons in the header as needed.
+
+Keyboard and editor basics:
+
+- Press Enter to send, or Shift+Enter for a newline.
+- Hover over a message to reveal copy, edit, delete, and branch actions.
+- Drop plaintext files into the composer to append their contents to the prompt.
+- Exported snapshots use the current tree format. Older graph exports are not supported.
 
 ## Development
 
-- Install dependencies: `bun install`
-- Dev: `bun dev`
-- Build: `bun build-dist`
+Use Bun for local development.
 
-## Configure API
+```sh
+bun install
+bun dev
+bunx tsc --noEmit
+bun build-dist
+```
 
-1. Click the Settings icon in the header.
-2. Choose a provider:
-   - **OpenAI‑Compatible**: enter a base URL (e.g. `https://api.openai.com/v1`) and API key, then click "Save". Click "Sync from API" to fetch models.
-   - **Built-in AI (Chrome/Edge)**: no API key required. The app will check availability and, if needed, download the built-in model with progress feedback.
+The production build is configured through Rsbuild with inlined scripts and styles.
 
-## Usage Tips
-
-- Enter a prompt and press Enter to send (Shift+Enter for newline).
-- Hover over a message to reveal actions: copy, edit, delete (removes the node and reconnects its children to the parent), or split (detach from its parent to start a new thread).
-- Drop plaintext files into the message area to append their contents to the input.
-- Import or export the full conversation tree via the header buttons; exported JSON captures every branch, not just the active chat path.
-- Snapshots now use the tree format introduced in this refactor; older graph exports are not supported.
-
-## Security Notes
-
-- The API key is stored locally in the browser (IndexedDB) and requests are sent directly from the client. Treat the key as accessible to any JavaScript code running in the page.
-
-## Tech Stack
-
-- React 18, Mantine UI, Tailwind CSS
-- Vercel AI SDK
-- Rsbuild (Rspack)
-
-## Related Projects
+## Similar Projects
 
 - [lmg-anon/mikupad](https://github.com/lmg-anon/mikupad): LLM Frontend in a single html file
 
